@@ -1,26 +1,35 @@
 @import "tailwindcss";
 
+/* GoShed design system */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg:       #F5F0E8;
+  --surface:  #EDE8DC;
+  --surface2: #E4DDD0;
+  --ink:      #2C2416;
+  --ink-soft: #6B5B45;
+  --accent:   #8B6F47;
+  --soft:     #C4A882;
+  --white:    #FDFAF5;
+  --green:    #5C7A5F;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface2: var(--surface2);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-accent: var(--accent);
+  --color-soft: var(--soft);
+  --color-white: var(--white);
+  --color-green: var(--green);
+  --font-display: var(--font-cormorant), serif;
+  --font-body: var(--font-source-serif), serif;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
 }
