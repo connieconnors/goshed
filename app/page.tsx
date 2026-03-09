@@ -190,16 +190,80 @@ export default function Home() {
         {/* Decision buttons */}
         {result && !recommendLoading && recommendResult && !chosenDecision && (
           <div style={{ marginTop: '16px' }}>
-            <p style={{ fontSize: '11px', color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '10px' }}>
-              What do you want to do?
+            {/* Primary recommended action */}
+            <button
+              onClick={() => setChosenDecision(recommendResult.recommendation)}
+              style={{
+                width: '100%',
+                height: '44px',
+                background: 'var(--green)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '12px',
+                fontSize: '14px',
+                fontWeight: 600,
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                marginBottom: '12px',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = '#4d5e47')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'var(--green)')}
+            >
+              {(() => {
+                const icons: Record<string, React.ReactNode> = {
+                  gift: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="8" width="18" height="14" rx="2"/><path d="M12 8v14M3 13h18"/><path d="M8 8c0-2.2 1.8-4 4-4s4 1.8 4 4"/></svg>,
+                  donate: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>,
+                  sell: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>,
+                  curb: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>,
+                  repurpose: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>,
+                  keep: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>,
+                  trash: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>,
+                };
+                const labels: Record<string, string> = { gift: 'Gift', donate: 'Donate', sell: 'Sell', curb: 'Curb it', repurpose: 'Repurpose', keep: 'Keep', trash: 'Trash' };
+                return <>{icons[recommendResult.recommendation]}<span>{labels[recommendResult.recommendation]}</span></>;
+              })()}
+            </button>
+
+            {/* Other possibilities */}
+            <p style={{ fontSize: '11px', color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '8px' }}>
+              Other possibilities
             </p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-              {DECISION_BUTTONS.map(btn => (
-                <button key={btn.id} onClick={() => setChosenDecision(btn.id)}
-                  style={{ display: 'flex', alignItems: 'center', gap: '8px', background: btn.id === recommendResult.recommendation ? btn.color : 'var(--surface)', color: btn.id === recommendResult.recommendation ? 'white' : 'var(--ink)', border: `1.5px solid ${btn.id === recommendResult.recommendation ? btn.color : 'var(--soft)'}`, borderRadius: '12px', padding: '10px 14px', fontSize: '13px', fontWeight: btn.id === recommendResult.recommendation ? 700 : 400, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}>
-                  <span>{btn.emoji}</span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              {[
+                { id: 'gift', label: 'Gift', icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="8" width="18" height="14" rx="2"/><path d="M12 8v14M3 13h18"/><path d="M8 8c0-2.2 1.8-4 4-4s4 1.8 4 4"/></svg> },
+                { id: 'sell', label: 'Sell', icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg> },
+                { id: 'repurpose', label: 'Repurpose', icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> },
+                { id: 'keep', label: 'Keep', icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg> },
+                { id: 'curb', label: 'Curb it', icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg> },
+                { id: 'trash', label: 'Trash', icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg> },
+              ].filter(b => b.id !== recommendResult.recommendation).map(btn => (
+                <button
+                  key={btn.id}
+                  onClick={() => setChosenDecision(btn.id)}
+                  style={{
+                    height: '44px',
+                    padding: '0 16px',
+                    background: 'var(--white)',
+                    color: 'var(--green)',
+                    border: '1px solid #D8CDBE',
+                    borderRadius: '12px',
+                    fontSize: '13px',
+                    fontFamily: 'inherit',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface2)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'var(--white)')}
+                >
+                  {btn.icon}
                   <span>{btn.label}</span>
-                  {btn.id === recommendResult.recommendation && <span style={{ marginLeft: 'auto', fontSize: '10px', opacity: 0.8 }}>★</span>}
                 </button>
               ))}
             </div>

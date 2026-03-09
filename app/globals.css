@@ -10,7 +10,8 @@
   --accent:   #8B6F47;
   --soft:     #C4A882;
   --white:    #FDFAF5;
-  --green:    #5C7A5F;
+  --green:    #5E7155;
+  --denim:    #6C7C8C;
 }
 
 @theme inline {
@@ -23,6 +24,7 @@
   --color-soft: var(--soft);
   --color-white: var(--white);
   --color-green: var(--green);
+  --color-denim: var(--denim);
   --font-display: var(--font-cormorant), serif;
   --font-body: var(--font-source-serif), serif;
 }
