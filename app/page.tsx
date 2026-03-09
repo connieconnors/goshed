@@ -124,7 +124,14 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ image: dataUrl }),
       });
-      const data = await res.json();
+      const raw = await res.text();
+      let data: { error?: string; details?: string } & AnalyzeResult;
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        setError('We couldn\'t analyze this image. Try again or use a different photo.');
+        return;
+      }
       if (!res.ok) {
         if (data.details) console.error('[analyze] API error details:', data.details);
         setError(data.details && typeof data.details === 'string' ? data.details : (data.error || 'Analysis failed'));
@@ -155,7 +162,14 @@ export default function Home() {
             shippable: shippable ?? false,
           }),
         });
-        const recData = await recRes.json();
+        const recRaw = await recRes.text();
+        let recData: RecommendResult & { error?: string; details?: string };
+        try {
+          recData = recRaw ? JSON.parse(recRaw) : {};
+        } catch {
+          setRecommendError('retry');
+          return;
+        }
         if (!recRes.ok) {
           console.error('Recommend API error:', recRes.status, recData.error ?? '', recData.details ?? '');
           setRecommendError('retry');
