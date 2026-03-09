@@ -50,6 +50,15 @@ const LOADING_PHRASES = [
   'Finding the best next life',
 ];
 
+/** Derive shippable when analysis doesn't provide it: false if fragile, oversized, or full set; else true. */
+function deriveShippable(analysis: { item_label?: string; description?: string }): boolean {
+  const text = `${analysis.item_label ?? ''} ${analysis.description ?? ''}`.toLowerCase();
+  if (/fragile|oversized|full set|set of|bulky|large piece|furniture|mirror|glass|breakable/.test(text)) {
+    return false;
+  }
+  return true;
+}
+
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -115,16 +124,35 @@ export default function Home() {
 
       setRecommendLoading(true);
       try {
+        const item_label = analysis.item_label;
+        const value_range = analysis.value_range;
+        if (item_label === undefined || value_range === undefined) {
+          console.error('Recommend: missing analysis fields for recommendation');
+          setRecommendError('retry');
+          return;
+        }
+        const shippable =
+          typeof analysis.shippable === 'boolean' ? analysis.shippable : deriveShippable(analysis);
+
         const recRes = await fetch('/api/recommend', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ item_label: analysis.item_label, value_range: analysis.value_range, shippable: analysis.shippable }),
+          body: JSON.stringify({
+            item_label,
+            value_range,
+            shippable: shippable ?? false,
+          }),
         });
         const recData = await recRes.json();
-        if (!recRes.ok) { setRecommendError(recData.error || recData.details || 'Recommendation failed'); return; }
+        if (!recRes.ok) {
+          console.error('Recommend API error:', recData.error ?? recData.details ?? recRes.status);
+          setRecommendError('retry');
+          return;
+        }
         setRecommendResult(recData as RecommendResult);
       } catch (recErr) {
-        setRecommendError(recErr instanceof Error ? recErr.message : 'Something went wrong');
+        console.error('Recommend request failed:', recErr);
+        setRecommendError('retry');
       } finally {
         setRecommendLoading(false);
       }
@@ -199,7 +227,7 @@ export default function Home() {
             <p style={{ fontFamily: 'var(--font-cormorant)', fontSize: '18px', fontWeight: 500, color: 'var(--ink)', marginBottom: '8px' }}>{result.item_label}</p>
             <p style={{ fontSize: '13px', color: 'var(--accent)', marginBottom: '8px' }}>{result.value_range}</p>
             <p style={{ fontSize: '12px', color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '12px' }}>
-              {result.shippable ? 'Shippable' : 'Local only'}
+              {result.shippable ? 'Shippable' : 'Local item'}
             </p>
             <p style={{ fontSize: '14px', color: 'var(--ink)', lineHeight: 1.5 }}>{result.description}</p>
           </div>
@@ -330,7 +358,10 @@ export default function Home() {
 
         {/* Errors */}
         {result && !recommendLoading && recommendError && (
-          <div style={{ marginTop: '16px', padding: '16px', background: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--soft)', color: 'var(--ink-soft)', fontSize: '14px' }}>{recommendError}</div>
+          <div style={{ marginTop: '16px', padding: '16px', background: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--soft)', color: 'var(--ink-soft)', fontSize: '14px' }}>
+            <p style={{ margin: 0, marginBottom: '6px' }}>We couldn&apos;t decide just yet.</p>
+            <p style={{ margin: 0, fontSize: '13px' }}>Try again or choose the best next life yourself.</p>
+          </div>
         )}
         {!loading && error && (
           <div style={{ marginTop: '20px', padding: '16px', background: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--soft)', color: 'var(--ink-soft)', fontSize: '14px' }}>{error}</div>
