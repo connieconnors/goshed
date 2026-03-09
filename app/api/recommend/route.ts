@@ -65,7 +65,7 @@ Choose the single best next life for this item. Give a brief personal reason and
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-opus-4-5",
+      model: "claude-3-7-sonnet-latest",
       max_tokens: 512,
       system: systemPrompt,
       messages: [{ role: "user", content: userMessage }],
@@ -84,7 +84,11 @@ Choose the single best next life for this item. Give a brief personal reason and
   const validRecommendations = ["gift", "donate", "sell", "keep", "trash", "curb", "repurpose"] as const;
   let result: RecommendResult;
   try {
-    const parsed = JSON.parse(rawText) as unknown;
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error("No JSON object found in model response");
+    }
+    const parsed = JSON.parse(jsonMatch[0]) as unknown;
     if (typeof parsed !== "object" || parsed === null || !("recommendation" in parsed) || !("reason" in parsed) || !("next_step" in parsed)) {
       throw new Error("Missing required fields");
     }
