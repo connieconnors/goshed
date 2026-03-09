@@ -42,8 +42,6 @@ const ALL_DISPLAY_OPTIONS: { id: ActionOptionId; label: string; icon: React.Reac
   { id: 'recycle', label: 'Recycle', icon: ICON_RECYCLE },
 ];
 
-const SECONDARY_LIST_IDS: ActionOptionId[] = ['gift', 'sell', 'repurpose', 'keep', 'recycle', 'trash'];
-
 const LOADING_PHRASES = [
   'Looking at what this is',
   'Checking useful possibilities',
@@ -68,6 +66,18 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
+/** Return the first sentence of a string (up to and including the first period). */
+function firstSentence(text: string): string {
+  const trimmed = text.trim();
+  const i = trimmed.indexOf('.');
+  return i === -1 ? trimmed : trimmed.slice(0, i + 1).trim();
+}
+
+/** Recommendation headline: "Donate this", "Curb it", etc. */
+function recommendationHeadline(label: string): string {
+  return label === 'Curb it' ? label : `${label} this`;
+}
+
 export default function Home() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -78,7 +88,6 @@ export default function Home() {
   const [recommendResult, setRecommendResult] = useState<RecommendResult | null>(null);
   const [recommendError, setRecommendError] = useState<string | null>(null);
   const [chosenDecision, setChosenDecision] = useState<string | null>(null);
-  const [otherOptionsOpen, setOtherOptionsOpen] = useState(false);
   const [loadingPhraseIndex, setLoadingPhraseIndex] = useState(0);
 
   useEffect(() => {
@@ -105,7 +114,6 @@ export default function Home() {
     setRecommendResult(null);
     setRecommendError(null);
     setChosenDecision(null);
-    setOtherOptionsOpen(false);
     setLoadingPhraseIndex(0);
     setLoading(true);
 
@@ -117,7 +125,11 @@ export default function Home() {
         body: JSON.stringify({ image: dataUrl }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error || data.details || 'Analysis failed'); return; }
+      if (!res.ok) {
+        if (data.details) console.error('[analyze] API error details:', data.details);
+        setError(data.details && typeof data.details === 'string' ? data.details : (data.error || 'Analysis failed'));
+        return;
+      }
       const analysis = data as AnalyzeResult;
       setResult(analysis);
       setLoading(false);
@@ -145,7 +157,7 @@ export default function Home() {
         });
         const recData = await recRes.json();
         if (!recRes.ok) {
-          console.error('Recommend API error:', recData.error ?? recData.details ?? recRes.status);
+          console.error('Recommend API error:', recRes.status, recData.error ?? '', recData.details ?? '');
           setRecommendError('retry');
           return;
         }
@@ -221,21 +233,21 @@ export default function Home() {
           </div>
         )}
 
-        {/* Analysis card */}
+        {/* Analysis card: item identity → practical context */}
         {!loading && result && (
-          <div style={{ marginTop: '20px', padding: '20px', background: 'var(--white)', borderRadius: '16px', border: '1px solid var(--surface2)', boxShadow: '0 2px 8px rgba(44,36,22,0.06)' }}>
+          <div style={{ marginTop: '24px', padding: '20px', background: 'var(--white)', borderRadius: '16px', border: '1px solid var(--surface2)', boxShadow: '0 2px 8px rgba(44,36,22,0.06)' }}>
             <p style={{ fontFamily: 'var(--font-cormorant)', fontSize: '18px', fontWeight: 500, color: 'var(--ink)', marginBottom: '8px' }}>{result.item_label}</p>
-            <p style={{ fontSize: '13px', color: 'var(--accent)', marginBottom: '8px' }}>{result.value_range}</p>
-            <p style={{ fontSize: '12px', color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '12px' }}>
-              {result.shippable ? 'Shippable' : 'Local item'}
+            <p style={{ fontSize: '13px', fontWeight: 500, color: 'var(--accent)', marginBottom: '8px' }}>{result.value_range}</p>
+            <p style={{ fontSize: '12px', color: 'var(--ink-soft)', letterSpacing: '0.04em', marginBottom: '12px' }}>
+              {result.shippable ? 'Shipping possible' : 'Local only'}
             </p>
-            <p style={{ fontSize: '14px', color: 'var(--ink)', lineHeight: 1.5 }}>{result.description}</p>
+            <p style={{ fontSize: '13px', color: 'var(--ink-soft)', lineHeight: 1.5, marginBottom: 0 }}>{firstSentence(result.description)}</p>
           </div>
         )}
 
         {/* Recommendation spinner */}
         {result && recommendLoading && (
-          <div style={{ marginTop: '16px', padding: '20px', background: 'var(--surface)', borderRadius: '16px', border: '1px solid var(--surface2)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
+          <div style={{ marginTop: '24px', padding: '20px', background: 'var(--surface)', borderRadius: '16px', border: '1px solid var(--surface2)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
             <span style={{ width: '22px', height: '22px', border: '2px solid var(--soft)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'goshed-spin 0.8s linear infinite' }} />
             <span style={{ color: 'var(--ink-soft)', fontSize: '14px' }}>Getting recommendation…</span>
           </div>
@@ -243,34 +255,33 @@ export default function Home() {
 
         {/* Recommendation card */}
         {result && !recommendLoading && recommendResult && (
-          <div style={{ marginTop: '16px', padding: '24px', background: 'var(--surface)', borderRadius: '16px', border: '1px solid var(--soft)', boxShadow: '0 2px 8px rgba(44,36,22,0.06)' }}>
-            <p style={{ fontSize: '11px', color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '16px', marginTop: 0 }}>Best Next Life</p>
-            <p style={{ fontFamily: 'var(--font-cormorant)', fontSize: '18px', fontWeight: 600, color: 'var(--ink)', marginBottom: '16px', marginTop: 0 }}>
-              {ACTION_OPTIONS.find(o => o.id === recommendResult.recommendation)?.label ?? recommendResult.recommendation}
+          <div style={{ marginTop: '24px', padding: '24px', background: 'var(--surface)', borderRadius: '16px', border: '1px solid var(--soft)', boxShadow: '0 2px 8px rgba(44,36,22,0.06)' }}>
+            <p style={{ fontSize: '11px', color: 'var(--ink-soft)', letterSpacing: '0.06em', marginBottom: '12px', marginTop: 0 }}>Best Next Life</p>
+            <p style={{ fontFamily: 'var(--font-cormorant)', fontSize: '18px', fontWeight: 600, color: 'var(--ink)', marginBottom: '10px', marginTop: 0 }}>
+              {recommendationHeadline(ACTION_OPTIONS.find(o => o.id === recommendResult.recommendation)?.label ?? recommendResult.recommendation)}
             </p>
-            <p style={{ fontSize: '14px', color: 'var(--ink)', lineHeight: 1.55, marginBottom: '16px', marginTop: 0 }}>{recommendResult.reason}</p>
-            <p style={{ fontSize: '11px', color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '16px', marginTop: 0 }}>What to do next</p>
-            <p style={{ fontSize: '14px', color: 'var(--green)', fontWeight: 500, lineHeight: 1.5, marginBottom: 0, marginTop: 0 }}>{recommendResult.next_step}</p>
+            <p style={{ fontSize: '14px', color: 'var(--ink)', lineHeight: 1.5, marginBottom: 0, marginTop: 0 }}>{firstSentence(recommendResult.reason)}</p>
           </div>
         )}
 
-        {/* Primary action button (directly under card) — single dominant CTA */}
+        {/* Primary action: single medium-width button centered below card */}
         {result && !recommendLoading && recommendResult && !chosenDecision && recommendedAction && (
-          <div style={{ marginTop: '16px' }}>
+          <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <button
               onClick={() => setChosenDecision(recommendResult.recommendation)}
               style={{
-                width: '100%',
-                height: '48px',
-                background: '#5E7155',
+                height: '42px',
+                paddingLeft: '28px',
+                paddingRight: '28px',
+                background: 'var(--green)',
                 color: 'white',
                 border: 'none',
-                borderRadius: '12px',
+                borderRadius: '14px',
                 fontSize: '14px',
-                fontWeight: 600,
+                fontWeight: 500,
                 fontFamily: 'inherit',
                 cursor: 'pointer',
-                display: 'flex',
+                display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '8px',
@@ -280,52 +291,30 @@ export default function Home() {
               <span>{recommendedAction.label}</span>
             </button>
 
-            {/* See other possibilities — text link, expands secondary list */}
-            <div style={{ marginTop: '16px', textAlign: 'center' }}>
-              <button
-                type="button"
-                onClick={() => setOtherOptionsOpen(!otherOptionsOpen)}
-                style={{
-                  fontSize: '13px',
-                  color: 'var(--ink-soft)',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: 0,
-                  textDecoration: 'underline',
-                  fontFamily: 'inherit',
-                }}
-              >
-                {otherOptionsOpen ? 'Hide other possibilities' : 'See other possibilities'}
-              </button>
-              {otherOptionsOpen && (
-                <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {ALL_DISPLAY_OPTIONS.filter(o => SECONDARY_LIST_IDS.includes(o.id) && o.id !== recommendResult.recommendation).map(btn => (
-                    <button
-                      key={btn.id}
-                      onClick={() => setChosenDecision(btn.id)}
-                      style={{
-                        height: '44px',
-                        padding: '0 16px',
-                        background: 'transparent',
-                        color: 'var(--ink)',
-                        border: '1px solid #D8CDBE',
-                        borderRadius: '12px',
-                        fontSize: '13px',
-                        fontFamily: 'inherit',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '8px',
-                      }}
-                    >
-                      {btn.icon}
-                      <span>{btn.label}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
+            {/* Alternative actions: quiet inline */}
+            <p style={{ fontSize: '11px', color: 'var(--ink-soft)', letterSpacing: '0.04em', marginTop: '18px', marginBottom: '6px' }}>Or instead</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: '4px 0', maxWidth: '320px', lineHeight: 1.6 }}>
+              {ACTION_OPTIONS.filter(o => o.id !== recommendResult.recommendation).map((btn, i) => (
+                <span key={btn.id} style={{ display: 'inline-flex', alignItems: 'center' }}>
+                  {i > 0 && <span style={{ color: 'var(--ink-soft)', fontSize: '12px', margin: '0 6px', opacity: 0.7 }}>·</span>}
+                  <button
+                    type="button"
+                    onClick={() => setChosenDecision(btn.id)}
+                    style={{
+                      padding: 0,
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--ink-soft)',
+                      fontSize: '12px',
+                      fontWeight: 400,
+                      fontFamily: 'inherit',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {btn.label === 'Curb it' ? 'Curb' : btn.label}
+                  </button>
+                </span>
+              ))}
             </div>
           </div>
         )}

@@ -33,18 +33,36 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  const systemPrompt = `You are GoShed: a calm, thoughtful decision engine for what to do with things people own. Not a generic AI — you speak with quiet confidence and clarity.
+  // Temporary debug: confirm request body before Anthropic fetch
+  console.log("[recommend] request body:", { item_label, value_range, shippable });
 
-Choose exactly one best next life. No hedging ("consider", "you might"). One clear answer.
+  const systemPrompt = `You are GoShed: a calm, thoughtful decision engine for what to do with things people own. Determine the best next life for each item using the following logic. Return exactly one recommendation — no hedging.
+
+Factors to consider:
+1. Estimated resale value (from value_range)
+2. Collectibility or brand recognition
+3. Shipping practicality (shippable true/false)
+4. Charity usefulness (who would benefit from a donation)
+5. Emotional or gift potential (upcoming events, people in their life)
+
+Decision guidance — use these rules to pick the best option:
+- If resale value likely exceeds $25 → prioritize SELL
+- If collectible or branded (known maker, vintage, sought-after) → prioritize SELL
+- If bulky or low resale but usable → consider DONATE
+- If personal or gift-like and fits someone in their life/events → consider GIFT
+- If worn but usable in another way → consider REPURPOSE
+- If broken, stained, or unusable → TRASH
+- If large/furniture and not worth selling → consider CURB (free pickup) or DONATE
+- If genuinely worth keeping (sentimental, daily use) → KEEP
 
 Valid recommendation (exactly one): gift | donate | sell | curb | repurpose | keep | trash
 
 Output rules:
 - recommendation: one of the seven words above, nothing else.
-- reason: 1–2 sentences maximum. Warm, personal, tied to their life. Do not repeat obvious descriptive details about the item unless necessary. Concise and human.
-- next_step: exactly one sentence. Practical, immediate — what to do right now.
+- reason: one sentence. Warm, personal, tied to the decision. Do not repeat obvious item details. Concise.
+- next_step: one sentence. Practical, immediate — what to do right now.
 
-Tone: warm, elegant, practical. Like a thoughtful friend who has already decided.`;
+Tone: warm, elegant, practical. Like a thoughtful friend who has already decided. Do not default to donate — match the recommendation to the value, brand, and context.`;
 
   const userMessage = `Item: ${item_label}
 Value: ${value_range}
@@ -55,7 +73,7 @@ Events: ${LIFE_CONTEXT.events.join("; ")}
 Causes: ${LIFE_CONTEXT.causes.join("; ")}
 People: ${LIFE_CONTEXT.people.join("; ")}
 
-Choose the single best next life for this item. Give a brief personal reason and one practical immediate next step. Respond with only valid JSON: recommendation, reason, next_step.`;
+Using the decision guidance, choose the single best next life for this item. Respond with only valid JSON: recommendation, reason, next_step.`;
 
   const response = await fetch(ANTHROPIC_API_URL, {
     method: "POST",
@@ -65,21 +83,29 @@ Choose the single best next life for this item. Give a brief personal reason and
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-3-7-sonnet-latest",
+      model: "claude-sonnet-4-6",
       max_tokens: 512,
       system: systemPrompt,
       messages: [{ role: "user", content: userMessage }],
     }),
   });
 
+  // Temporary debug: log response status and body when not ok
   if (!response.ok) {
     const errText = await response.text();
+    console.error("[recommend] Anthropic response not ok:", response.status, errText.slice(0, 500));
     return NextResponse.json({ error: "Anthropic API error", details: errText }, { status: response.status >= 500 ? 502 : 400 });
   }
 
   const data = (await response.json()) as { content?: Array<{ type: string; text?: string }> };
   const textBlock = data.content?.find((b) => b.type === "text");
   const rawText = textBlock?.text?.trim() ?? "";
+
+  // Temporary debug: raw text before JSON parsing
+  console.log("[recommend] response.status:", response.status, "rawText length:", rawText.length, "rawText preview:", rawText.slice(0, 300));
+  if (!rawText) {
+    console.error("[recommend] empty rawText - full data structure:", JSON.stringify(data).slice(0, 800));
+  }
 
   const validRecommendations = ["gift", "donate", "sell", "keep", "trash", "curb", "repurpose"] as const;
   let result: RecommendResult;
@@ -101,7 +127,8 @@ Choose the single best next life for this item. Give a brief personal reason and
       reason: String((parsed as Record<string, unknown>).reason),
       next_step: String((parsed as Record<string, unknown>).next_step),
     };
-  } catch {
+  } catch (parseErr) {
+    console.error("[recommend] JSON parse failed:", parseErr, "rawText preview:", rawText.slice(0, 500));
     return NextResponse.json({ error: "Model did not return valid JSON", raw: rawText.slice(0, 500) }, { status: 502 });
   }
 
