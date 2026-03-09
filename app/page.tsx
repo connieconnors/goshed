@@ -16,14 +16,31 @@ type RecommendResult = {
   next_step: string;
 };
 
-const DECISION_BUTTONS = [
-  { id: 'gift',      emoji: '🎁', label: 'Gift',      color: '#6b4fa0' },
-  { id: 'donate',    emoji: '🤲', label: 'Donate',    color: '#4e7c4e' },
-  { id: 'sell',      emoji: '🏷️', label: 'Sell',      color: '#c07a2a' },
-  { id: 'curb',      emoji: '🪧', label: 'Curb it',   color: '#4a7a8a' },
-  { id: 'repurpose', emoji: '♻️', label: 'Repurpose', color: '#7a6a3a' },
-  { id: 'keep',      emoji: '🗂️', label: 'Keep',      color: '#888'    },
-  { id: 'trash',     emoji: '🗑️', label: 'Trash',     color: '#a05050' },
+const ICON_GIFT = <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="8" width="18" height="14" rx="2"/><path d="M12 8v14M3 13h18"/><path d="M8 8c0-2.2 1.8-4 4-4s4 1.8 4 4"/></svg>;
+const ICON_DONATE = <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>;
+const ICON_SELL = <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>;
+const ICON_CURB = <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>;
+const ICON_REPURPOSE = <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>;
+const ICON_KEEP = <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>;
+const ICON_TRASH = <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>;
+
+const ACTION_OPTIONS: { id: RecommendResult['recommendation']; label: string; icon: React.ReactNode }[] = [
+  { id: 'gift', label: 'Gift', icon: ICON_GIFT },
+  { id: 'donate', label: 'Donate', icon: ICON_DONATE },
+  { id: 'sell', label: 'Sell', icon: ICON_SELL },
+  { id: 'curb', label: 'Curb it', icon: ICON_CURB },
+  { id: 'repurpose', label: 'Repurpose', icon: ICON_REPURPOSE },
+  { id: 'keep', label: 'Keep', icon: ICON_KEEP },
+  { id: 'trash', label: 'Trash', icon: ICON_TRASH },
+];
+
+const PRIMARY_VISIBLE_IDS = ['gift', 'sell', 'repurpose', 'keep'] as const;
+const OTHER_OPTIONS_IDS = ['curb', 'trash'] as const;
+
+const LOADING_PHRASES = [
+  'Looking at what this is',
+  'Checking useful possibilities',
+  'Finding the best next life',
 ];
 
 function fileToDataUrl(file: File): Promise<string> {
@@ -45,10 +62,20 @@ export default function Home() {
   const [recommendResult, setRecommendResult] = useState<RecommendResult | null>(null);
   const [recommendError, setRecommendError] = useState<string | null>(null);
   const [chosenDecision, setChosenDecision] = useState<string | null>(null);
+  const [otherOptionsOpen, setOtherOptionsOpen] = useState(false);
+  const [loadingPhraseIndex, setLoadingPhraseIndex] = useState(0);
 
   useEffect(() => {
     return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
   }, [previewUrl]);
+
+  useEffect(() => {
+    if (!loading) return;
+    const id = setInterval(() => {
+      setLoadingPhraseIndex(i => (i + 1) % LOADING_PHRASES.length);
+    }, 1500);
+    return () => clearInterval(id);
+  }, [loading]);
 
   const handleZoneClick = () => inputRef.current?.click();
 
@@ -62,6 +89,8 @@ export default function Home() {
     setRecommendResult(null);
     setRecommendError(null);
     setChosenDecision(null);
+    setOtherOptionsOpen(false);
+    setLoadingPhraseIndex(0);
     setLoading(true);
 
     try {
@@ -99,8 +128,8 @@ export default function Home() {
     }
   };
 
-  const recommendedBtn = recommendResult
-    ? DECISION_BUTTONS.find(b => b.id === recommendResult.recommendation)
+  const recommendedAction = recommendResult
+    ? ACTION_OPTIONS.find(o => o.id === recommendResult.recommendation)
     : null;
 
   return (
@@ -142,9 +171,14 @@ export default function Home() {
 
         {/* Analyzing spinner */}
         {loading && (
-          <div style={{ marginTop: '20px', padding: '24px', background: 'var(--surface)', borderRadius: '16px', border: '1px solid var(--surface2)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
-            <span style={{ width: '24px', height: '24px', border: '2px solid var(--soft)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'goshed-spin 0.8s linear infinite' }} />
-            <span style={{ color: 'var(--ink-soft)', fontSize: '14px' }}>Analyzing…</span>
+          <div style={{ marginTop: '20px', padding: '24px', background: 'var(--surface)', borderRadius: '16px', border: '1px solid var(--surface2)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
+              <span style={{ width: '24px', height: '24px', border: '2px solid var(--soft)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'goshed-spin 0.8s linear infinite' }} />
+              <span style={{ color: 'var(--ink-soft)', fontSize: '14px' }}>Thinking about this…</span>
+            </div>
+            <p style={{ color: 'var(--ink-soft)', fontSize: '13px', margin: 0 }}>
+              {LOADING_PHRASES[loadingPhraseIndex]}
+            </p>
           </div>
         )}
 
@@ -170,33 +204,26 @@ export default function Home() {
 
         {/* Recommendation card */}
         {result && !recommendLoading && recommendResult && (
-          <div style={{ marginTop: '16px', padding: '20px', background: 'var(--surface)', borderRadius: '16px', border: '1px solid var(--soft)', boxShadow: '0 2px 8px rgba(44,36,22,0.06)' }}>
-            <p style={{ fontSize: '11px', color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '8px' }}>Our recommendation</p>
-            {recommendedBtn && (
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: recommendedBtn.color, borderRadius: '20px', padding: '6px 16px', marginBottom: '12px' }}>
-                <span>{recommendedBtn.emoji}</span>
-                <span style={{ color: 'white', fontWeight: 600, fontSize: '15px' }}>{recommendedBtn.label}</span>
-              </div>
-            )}
-            <p style={{ fontSize: '14px', color: 'var(--ink)', lineHeight: 1.55, marginBottom: '14px' }}>{recommendResult.reason}</p>
-            {!chosenDecision && (
-              <p style={{ fontSize: '13px', color: 'var(--green)', fontWeight: 500, lineHeight: 1.4 }}>
-                Next step: {recommendResult.next_step}
-              </p>
-            )}
+          <div style={{ marginTop: '16px', padding: '24px', background: 'var(--surface)', borderRadius: '16px', border: '1px solid var(--soft)', boxShadow: '0 2px 8px rgba(44,36,22,0.06)' }}>
+            <p style={{ fontSize: '11px', color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '16px', marginTop: 0 }}>Best Next Life</p>
+            <p style={{ fontFamily: 'var(--font-cormorant)', fontSize: '18px', fontWeight: 600, color: 'var(--ink)', marginBottom: '16px', marginTop: 0 }}>
+              {ACTION_OPTIONS.find(o => o.id === recommendResult.recommendation)?.label ?? recommendResult.recommendation}
+            </p>
+            <p style={{ fontSize: '14px', color: 'var(--ink)', lineHeight: 1.55, marginBottom: '16px', marginTop: 0 }}>{recommendResult.reason}</p>
+            <p style={{ fontSize: '11px', color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '16px', marginTop: 0 }}>What to do next</p>
+            <p style={{ fontSize: '14px', color: 'var(--green)', fontWeight: 500, lineHeight: 1.5, marginBottom: 0, marginTop: 0 }}>{recommendResult.next_step}</p>
           </div>
         )}
 
-        {/* Decision buttons */}
-        {result && !recommendLoading && recommendResult && !chosenDecision && (
+        {/* Primary action button (directly under card) */}
+        {result && !recommendLoading && recommendResult && !chosenDecision && recommendedAction && (
           <div style={{ marginTop: '16px' }}>
-            {/* Primary recommended action */}
             <button
               onClick={() => setChosenDecision(recommendResult.recommendation)}
               style={{
                 width: '100%',
-                height: '44px',
-                background: 'var(--green)',
+                height: '48px',
+                background: '#5E7155',
                 color: 'white',
                 border: 'none',
                 borderRadius: '12px',
@@ -208,47 +235,26 @@ export default function Home() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '8px',
-                marginBottom: '12px',
               }}
-              onMouseEnter={e => (e.currentTarget.style.background = '#4d5e47')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'var(--green)')}
             >
-              {(() => {
-                const icons: Record<string, React.ReactNode> = {
-                  gift: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="8" width="18" height="14" rx="2"/><path d="M12 8v14M3 13h18"/><path d="M8 8c0-2.2 1.8-4 4-4s4 1.8 4 4"/></svg>,
-                  donate: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>,
-                  sell: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>,
-                  curb: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>,
-                  repurpose: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>,
-                  keep: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>,
-                  trash: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>,
-                };
-                const labels: Record<string, string> = { gift: 'Gift', donate: 'Donate', sell: 'Sell', curb: 'Curb it', repurpose: 'Repurpose', keep: 'Keep', trash: 'Trash' };
-                return <>{icons[recommendResult.recommendation]}<span>{labels[recommendResult.recommendation]}</span></>;
-              })()}
+              {recommendedAction.icon}
+              <span>{recommendedAction.label}</span>
             </button>
 
-            {/* Other possibilities */}
-            <p style={{ fontSize: '11px', color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '8px' }}>
+            {/* Secondary actions: Gift, Sell, Repurpose, Keep — 2x2 grid */}
+            <p style={{ fontSize: '11px', color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '0.12em', marginTop: '16px', marginBottom: '8px' }}>
               Other possibilities
             </p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              {[
-                { id: 'gift', label: 'Gift', icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="8" width="18" height="14" rx="2"/><path d="M12 8v14M3 13h18"/><path d="M8 8c0-2.2 1.8-4 4-4s4 1.8 4 4"/></svg> },
-                { id: 'sell', label: 'Sell', icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg> },
-                { id: 'repurpose', label: 'Repurpose', icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> },
-                { id: 'keep', label: 'Keep', icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg> },
-                { id: 'curb', label: 'Curb it', icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg> },
-                { id: 'trash', label: 'Trash', icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg> },
-              ].filter(b => b.id !== recommendResult.recommendation).map(btn => (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              {ACTION_OPTIONS.filter(o => (PRIMARY_VISIBLE_IDS as readonly string[]).includes(o.id) && o.id !== recommendResult.recommendation).map(btn => (
                 <button
                   key={btn.id}
                   onClick={() => setChosenDecision(btn.id)}
                   style={{
                     height: '44px',
                     padding: '0 16px',
-                    background: 'var(--white)',
-                    color: 'var(--green)',
+                    background: 'transparent',
+                    color: 'var(--ink)',
                     border: '1px solid #D8CDBE',
                     borderRadius: '12px',
                     fontSize: '13px',
@@ -256,29 +262,75 @@ export default function Home() {
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
+                    justifyContent: 'center',
                     gap: '6px',
-                    transition: 'background 0.15s',
                   }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface2)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'var(--white)')}
                 >
                   {btn.icon}
                   <span>{btn.label}</span>
                 </button>
               ))}
             </div>
+
+            {/* Other options (collapsible): Curb it, Trash */}
+            <div style={{ marginTop: '12px' }}>
+              <button
+                type="button"
+                onClick={() => setOtherOptionsOpen(!otherOptionsOpen)}
+                style={{
+                  fontSize: '12px',
+                  color: 'var(--ink-soft)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 0,
+                  textDecoration: 'underline',
+                  fontFamily: 'inherit',
+                }}
+              >
+                {otherOptionsOpen ? 'Hide' : 'Other options'}
+              </button>
+              {otherOptionsOpen && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '8px' }}>
+                  {ACTION_OPTIONS.filter(o => (OTHER_OPTIONS_IDS as readonly string[]).includes(o.id) && o.id !== recommendResult.recommendation).map(btn => (
+                    <button
+                      key={btn.id}
+                      onClick={() => setChosenDecision(btn.id)}
+                      style={{
+                        height: '44px',
+                        padding: '0 16px',
+                        background: 'transparent',
+                        color: 'var(--ink)',
+                        border: '1px solid #D8CDBE',
+                        borderRadius: '12px',
+                        fontSize: '13px',
+                        fontFamily: 'inherit',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      {btn.icon}
+                      <span>{btn.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
         {/* Post-decision confirmation */}
         {chosenDecision && recommendResult && (
-          <div style={{ marginTop: '16px', padding: '20px', background: 'var(--surface)', borderRadius: '16px', border: '1px solid var(--soft)' }}>
+          <div style={{ marginTop: '16px', padding: '24px', background: 'var(--surface)', borderRadius: '16px', border: '1px solid var(--soft)' }}>
             {(() => {
-              const btn = DECISION_BUTTONS.find(b => b.id === chosenDecision);
+              const btn = ACTION_OPTIONS.find(b => b.id === chosenDecision);
               return (
                 <>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                    <span style={{ fontSize: '20px' }}>{btn?.emoji}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                    <span style={{ display: 'flex' }}>{btn?.icon}</span>
                     <span style={{ fontFamily: 'var(--font-cormorant)', fontSize: '18px', color: 'var(--ink)' }}>
                       {btn?.label} — good call.
                     </span>
