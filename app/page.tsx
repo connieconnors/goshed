@@ -23,6 +23,9 @@ const ICON_CURB = <svg width="16" height="16" viewBox="0 0 24 24" fill="none" st
 const ICON_REPURPOSE = <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>;
 const ICON_KEEP = <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>;
 const ICON_TRASH = <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>;
+const ICON_RECYCLE = <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M7 16l-3-4 3-4"/><path d="M17 16l3-4-3-4"/><path d="M4 12h16"/><path d="M12 3v18"/></svg>;
+
+type ActionOptionId = RecommendResult['recommendation'] | 'recycle';
 
 const ACTION_OPTIONS: { id: RecommendResult['recommendation']; label: string; icon: React.ReactNode }[] = [
   { id: 'gift', label: 'Gift', icon: ICON_GIFT },
@@ -34,8 +37,12 @@ const ACTION_OPTIONS: { id: RecommendResult['recommendation']; label: string; ic
   { id: 'trash', label: 'Trash', icon: ICON_TRASH },
 ];
 
-const PRIMARY_VISIBLE_IDS = ['gift', 'sell', 'repurpose', 'keep'] as const;
-const OTHER_OPTIONS_IDS = ['curb', 'trash'] as const;
+const ALL_DISPLAY_OPTIONS: { id: ActionOptionId; label: string; icon: React.ReactNode }[] = [
+  ...ACTION_OPTIONS,
+  { id: 'recycle', label: 'Recycle', icon: ICON_RECYCLE },
+];
+
+const SECONDARY_LIST_IDS: ActionOptionId[] = ['gift', 'sell', 'repurpose', 'keep', 'recycle', 'trash'];
 
 const LOADING_PHRASES = [
   'Looking at what this is',
@@ -169,14 +176,18 @@ export default function Home() {
           )}
         </div>
 
-        {/* Analyzing spinner */}
+        {/* Loading state: minimal, centered under image */}
         {loading && (
-          <div style={{ marginTop: '20px', padding: '24px', background: 'var(--surface)', borderRadius: '16px', border: '1px solid var(--surface2)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
-              <span style={{ width: '24px', height: '24px', border: '2px solid var(--soft)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'goshed-spin 0.8s linear infinite' }} />
-              <span style={{ color: 'var(--ink-soft)', fontSize: '14px' }}>Thinking about this…</span>
+          <div style={{ marginTop: '40px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--soft)', animation: 'goshed-dot-pulse 1.4s ease-in-out infinite' }} />
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--soft)', animation: 'goshed-dot-pulse 1.4s ease-in-out 0.2s infinite' }} />
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--soft)', animation: 'goshed-dot-pulse 1.4s ease-in-out 0.4s infinite' }} />
             </div>
-            <p style={{ color: 'var(--ink-soft)', fontSize: '13px', margin: 0 }}>
+            <p style={{ color: 'var(--ink)', fontSize: '15px', fontWeight: 500, margin: 0 }}>
+              Thinking about this…
+            </p>
+            <p style={{ color: 'var(--ink-soft)', fontSize: '13px', fontWeight: 400, margin: 0, opacity: 0.85 }}>
               {LOADING_PHRASES[loadingPhraseIndex]}
             </p>
           </div>
@@ -215,7 +226,7 @@ export default function Home() {
           </div>
         )}
 
-        {/* Primary action button (directly under card) */}
+        {/* Primary action button (directly under card) — single dominant CTA */}
         {result && !recommendLoading && recommendResult && !chosenDecision && recommendedAction && (
           <div style={{ marginTop: '16px' }}>
             <button
@@ -241,44 +252,13 @@ export default function Home() {
               <span>{recommendedAction.label}</span>
             </button>
 
-            {/* Secondary actions: Gift, Sell, Repurpose, Keep — 2x2 grid */}
-            <p style={{ fontSize: '11px', color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '0.12em', marginTop: '16px', marginBottom: '8px' }}>
-              Other possibilities
-            </p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-              {ACTION_OPTIONS.filter(o => (PRIMARY_VISIBLE_IDS as readonly string[]).includes(o.id) && o.id !== recommendResult.recommendation).map(btn => (
-                <button
-                  key={btn.id}
-                  onClick={() => setChosenDecision(btn.id)}
-                  style={{
-                    height: '44px',
-                    padding: '0 16px',
-                    background: 'transparent',
-                    color: 'var(--ink)',
-                    border: '1px solid #D8CDBE',
-                    borderRadius: '12px',
-                    fontSize: '13px',
-                    fontFamily: 'inherit',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '6px',
-                  }}
-                >
-                  {btn.icon}
-                  <span>{btn.label}</span>
-                </button>
-              ))}
-            </div>
-
-            {/* Other options (collapsible): Curb it, Trash */}
-            <div style={{ marginTop: '12px' }}>
+            {/* See other possibilities — text link, expands secondary list */}
+            <div style={{ marginTop: '16px', textAlign: 'center' }}>
               <button
                 type="button"
                 onClick={() => setOtherOptionsOpen(!otherOptionsOpen)}
                 style={{
-                  fontSize: '12px',
+                  fontSize: '13px',
                   color: 'var(--ink-soft)',
                   background: 'none',
                   border: 'none',
@@ -288,11 +268,11 @@ export default function Home() {
                   fontFamily: 'inherit',
                 }}
               >
-                {otherOptionsOpen ? 'Hide' : 'Other options'}
+                {otherOptionsOpen ? 'Hide other possibilities' : 'See other possibilities'}
               </button>
               {otherOptionsOpen && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '8px' }}>
-                  {ACTION_OPTIONS.filter(o => (OTHER_OPTIONS_IDS as readonly string[]).includes(o.id) && o.id !== recommendResult.recommendation).map(btn => (
+                <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {ALL_DISPLAY_OPTIONS.filter(o => SECONDARY_LIST_IDS.includes(o.id) && o.id !== recommendResult.recommendation).map(btn => (
                     <button
                       key={btn.id}
                       onClick={() => setChosenDecision(btn.id)}
@@ -309,7 +289,7 @@ export default function Home() {
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        gap: '6px',
+                        gap: '8px',
                       }}
                     >
                       {btn.icon}
@@ -326,7 +306,7 @@ export default function Home() {
         {chosenDecision && recommendResult && (
           <div style={{ marginTop: '16px', padding: '24px', background: 'var(--surface)', borderRadius: '16px', border: '1px solid var(--soft)' }}>
             {(() => {
-              const btn = ACTION_OPTIONS.find(b => b.id === chosenDecision);
+              const btn = ALL_DISPLAY_OPTIONS.find(b => b.id === chosenDecision);
               return (
                 <>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>

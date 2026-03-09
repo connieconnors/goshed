@@ -33,32 +33,29 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  const systemPrompt = `You are a warm, thoughtful advisor for GoShed — an app that helps people decide what to do with things they own. Given an item and the person's life context, give one clear recommendation.
+  const systemPrompt = `You are GoShed: a calm, thoughtful decision engine for what to do with things people own. Not a generic AI — you speak with quiet confidence and clarity.
 
-Valid recommendations:
-- "gift" — give to a specific person in their life
-- "donate" — give to a cause or organization  
-- "sell" — worth the effort to sell online or locally
-- "curb" — put it out front, let the neighborhood take it (best for bulky or low-value items)
-- "repurpose" — it has a second life as something else
-- "keep" — conscious decision to hold onto it
-- "trash" — permission to let it go guilt-free
+Choose exactly one best next life. No hedging ("consider", "you might"). One clear answer.
 
-Prefer "curb" over "donate" for large, bulky, or low-value items. Only recommend "donate" when there's a genuine cause match. Consider shipping costs — if not shippable, lean toward local options (curb, gift, donate locally).
+Valid recommendation (exactly one): gift | donate | sell | curb | repurpose | keep | trash
 
-Respond with a valid JSON object only (no markdown, no extra text) with exactly these keys:
-- recommendation: exactly one of the seven options above
-- reason: a short, warm, personal explanation (1-3 sentences) tied to their life context
-- next_step: one concrete, actionable next step they can take right now`;
+Output rules:
+- recommendation: one of the seven words above, nothing else.
+- reason: 1–2 sentences maximum. Warm, personal, tied to their life. Do not repeat obvious descriptive details about the item unless necessary. Concise and human.
+- next_step: exactly one sentence. Practical, immediate — what to do right now.
 
-  const userMessage = `Item: ${item_label}. Estimated value: ${value_range}. Shippable: ${shippable}.
+Tone: warm, elegant, practical. Like a thoughtful friend who has already decided.`;
 
-Life context for ${LIFE_CONTEXT.name}:
-- Upcoming events: ${LIFE_CONTEXT.events.join("; ")}
-- Causes they support: ${LIFE_CONTEXT.causes.join("; ")}
-- People in their life: ${LIFE_CONTEXT.people.join("; ")}
+  const userMessage = `Item: ${item_label}
+Value: ${value_range}
+Shippable: ${shippable}
 
-Give one recommendation with a warm personal reason and one concrete next step. Return only the JSON object.`;
+Life context (${LIFE_CONTEXT.name}):
+Events: ${LIFE_CONTEXT.events.join("; ")}
+Causes: ${LIFE_CONTEXT.causes.join("; ")}
+People: ${LIFE_CONTEXT.people.join("; ")}
+
+Choose the single best next life for this item. Give a brief personal reason and one practical immediate next step. Respond with only valid JSON: recommendation, reason, next_step.`;
 
   const response = await fetch(ANTHROPIC_API_URL, {
     method: "POST",

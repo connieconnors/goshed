@@ -39,3 +39,8 @@ body {
 @keyframes goshed-spin {
   to { transform: rotate(360deg); }
 }
+
+@keyframes goshed-dot-pulse {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.95); }
+  40% { opacity: 1; transform: scale(1); }
+}
