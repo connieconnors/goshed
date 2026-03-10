@@ -21,48 +21,55 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "ANTHROPIC_API_KEY is not configured" }, { status: 500 });
   }
 
-  let body: { item_label?: string; value_range?: string; shippable?: boolean; user_note?: string };
+  let body: { item_label?: string; value_range?: string; shippable?: boolean; user_note?: string; user_override?: string };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { item_label, value_range, shippable, user_note } = body;
+  const { item_label, value_range, shippable, user_note, user_override } = body;
   if (!item_label || value_range === undefined || shippable === undefined) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
+  const validRecommendations = ["gift", "donate", "sell", "keep", "curb", "repurpose"] as const;
+  const override = typeof user_override === "string" ? user_override.trim().toLowerCase() : undefined;
+  if (override && !validRecommendations.includes(override as (typeof validRecommendations)[number])) {
+    return NextResponse.json({ error: "Invalid user_override" }, { status: 400 });
+  }
+
   const noteText = typeof user_note === "string" ? user_note.trim() : "";
   if (noteText) console.log("[recommend] user_note:", noteText.slice(0, 200));
+  if (override) console.log("[recommend] user_override:", override);
 
-  const systemPrompt = `You are GoShed: a calm, thoughtful decision engine for what to do with things people own. Determine the best next life for each item using the following logic. Return exactly one recommendation — no hedging.
+  const systemPrompt = `You are GoShed: a calm, decisive engine for what to do with things people own. Return exactly one recommendation — no hedging.
 
-Factors to consider:
-1. Estimated resale value (from value_range)
-2. Collectibility or brand recognition
-3. Shipping practicality (shippable true/false)
-4. Charity usefulness (who would benefit from a donation)
-5. Emotional or gift potential (upcoming events, people in their life)
+DECISION RULES — evaluate in this order:
 
-Decision guidance — use these rules to pick the best option:
-- If resale value likely exceeds $25 → prioritize SELL
-- If collectible or branded (known maker, vintage, sought-after) → prioritize SELL
-- If bulky or low resale but usable → consider DONATE
-- If personal or gift-like and fits someone in their life/events → consider GIFT
-- If worn but usable in another way → consider REPURPOSE
-- If broken, stained, or unusable → TRASH
-- If large/furniture and not worth selling → consider CURB (free pickup) or DONATE
-- If genuinely worth keeping (sentimental, daily use) → KEEP
+CURB (leave outside free): Item is bulky or low-value AND any of these: visibly worn, stained, faded, scratched, or damaged but still functional. Also use CURB for truly unusable items (broken beyond use, missing critical parts, moldy, hygiene items like used pillows or undergarments). Not worth a thrift store's time; someone driving by might want it or it can be left for disposal. Furniture, lamps, sporting goods, and housewares in rough shape belong here.
 
-Valid recommendation (exactly one): gift | donate | sell | curb | repurpose | keep | trash
+REPURPOSE: Damaged but material has obvious second life — fabric for craft, wood for DIY, ceramic for mosaic. Only if repurpose potential is clear.
 
-Output rules:
-- recommendation: one of the seven words above, nothing else.
-- reason: one sentence. Warm, personal, tied to the decision. Do not repeat obvious item details. Concise.
-- next_step: one sentence. Practical, immediate — what to do right now.
+SELL: Collectible, vintage, branded, or niche interest item in good condition. Estimated value $15+. Has a real secondary market.
 
-Tone: warm, elegant, practical. Like a thoughtful friend who has already decided. Do not default to donate — match the recommendation to the value, brand, and context.`;
+DONATE: Functional, clean, good condition, estimated value under $15. A thrift store would accept and sell it. Practical everyday item.
+
+GIFT: Good condition with charm, personality, or style that fits someone in the person's life or an upcoming event. Better as a thoughtful gift than a $3 thrift item.
+
+KEEP: Strong sentimental signals, personalized, handmade, or a high-quality item clearly still in active use.
+
+Default to SELL or DONATE when uncertain. Never recommend CURB unless wear, damage, or bulk makes donation impractical.
+
+next_step: one sentence. Must match the recommendation exactly:
+- SELL: suggest the best platform (eBay, Poshmark, Chairish, Facebook Marketplace, ThriftShopper) based on item type
+- DONATE: suggest dropping it off or scheduling pickup — no selling platforms
+- GIFT: suggest who or when to give it
+- CURB: suggest putting it out or scheduling a dump run
+- REPURPOSE: suggest one specific craft or reuse idea
+- KEEP: suggest where to store or display it
+
+Output: valid JSON only — recommendation (one of: gift | donate | sell | curb | repurpose | keep), reason (one warm practical sentence), next_step (one sentence matching the rule above).`;
 
   const userMessage = `Item: ${item_label}
 Value: ${value_range}
@@ -75,7 +82,7 @@ Events: ${LIFE_CONTEXT.events.join("; ")}
 Causes: ${LIFE_CONTEXT.causes.join("; ")}
 People: ${LIFE_CONTEXT.people.join("; ")}
 
-Using the decision guidance, choose the single best next life for this item. Respond with only valid JSON: recommendation, reason, next_step.`;
+${override ? `The user has chosen "${override}". Return JSON with recommendation set to "${override}", and provide a reason and next_step that match this choice (follow the next_step rules for that recommendation).` : "Using the decision guidance, choose the single best next life for this item."} Respond with only valid JSON: recommendation, reason, next_step.`;
 
   const response = await fetch(ANTHROPIC_API_URL, {
     method: "POST",
@@ -109,7 +116,6 @@ Using the decision guidance, choose the single best next life for this item. Res
     console.error("[recommend] empty rawText - full data structure:", JSON.stringify(data).slice(0, 800));
   }
 
-  const validRecommendations = ["gift", "donate", "sell", "keep", "trash", "curb", "repurpose"] as const;
   let result: RecommendResult;
   try {
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);

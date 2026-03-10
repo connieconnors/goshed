@@ -7,6 +7,8 @@ type AnalyzeResult = {
   value_range: string;
   shippable: boolean;
   description: string;
+  best_next_life: "Sell" | "Donate" | "Gift" | "Repurpose" | "Curb" | "Keep";
+  best_next_life_reason: string;
 };
 
 const ALLOWED_MEDIA_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;
@@ -132,11 +134,48 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const systemPrompt = `You are an expert at identifying household and personal items for the GoShed app (ThriftShopper-style). Analyze the image and respond with a valid JSON object only (no markdown, no extra text) with exactly these keys:
+  const systemPrompt = `You are an expert at identifying household and personal items for the GoShed app. Analyze the image and respond with a valid JSON object only (no markdown, no extra text) with exactly these keys:
 - item_label: a short label for the item (e.g. "Vintage ceramic vase", "Hardcover novel")
-- value_range: an estimated resale/value range in USD, e.g. "$5–15" or "$0 (sentimental only)"
-- shippable: true if the item is reasonably shippable (size/weight), false if fragile, oversized, or not practical to ship
-- description: a brief description that supports trust and resale intelligence. When describing the item: (1) Identify possible brand, manufacturer, or known product line if visible. (2) If uncertain, mention likely comparable brands or styles. (3) If the item resembles a known brand (e.g. ForLife, Corelle, Pyrex), state that clearly. (4) Avoid generic descriptions when brand cues exist. Keep it to one or two sentences. Example: "Ceramic teapot with stainless lid, similar to designs from ForLife."`;
+- value_range: estimated resale value in USD, e.g. "$5–15" or "$0 (no resale value)"
+- shippable: false for ANY of these: lamps, lighting fixtures, furniture, mirrors, large framed art, rugs, bedding, mattresses, appliances, large ceramics, glassware, sculptures, oversized or fragile items. true only for items that are small, sturdy, and under approximately 5 lbs — like books, clothing, small collectibles, jewelry, electronics, small tools. When in doubt, return false.
+- description: 1–2 sentences. Identify brand/manufacturer if visible; if uncertain, note comparable brands or styles.
+- best_next_life: one of exactly these values: "Sell", "Donate", "Gift", "Repurpose", "Curb", "Keep"
+- best_next_life_reason: 1–2 sentences explaining the recommendation in a warm, practical tone.
+
+DECISION RULES for best_next_life — evaluate in this order:
+
+CURB (do not donate, no value to anyone):
+- Visibly stained, moldy, cracked, broken, or heavily worn
+- Missing parts that make it non-functional
+- Hygiene items that cannot be donated (used pillows, mattresses, undergarments)
+- So low quality or damaged that a thrift store would reject it
+- Estimated value under $2 with no sentimental or craft potential
+
+REPURPOSE (broken but material has value):
+- Damaged but fabric, wood, metal, or ceramic could be reused creatively
+- Craft or upcycle potential is obvious from the image
+
+SELL (worth the effort to list):
+- Collectible, vintage, branded, or niche interest item
+- Estimated value $15 or more
+- Good condition — no visible damage, staining, or heavy wear
+- Has a clear secondary market (eBay, ThriftShopper, Etsy, Facebook Marketplace)
+
+DONATE (functional, clean, but not worth selling):
+- Good condition but estimated value under $15
+- Practical everyday item a thrift store would accept and sell
+- No obvious damage or wear
+
+GIFT (has personal or aesthetic appeal for a specific recipient):
+- Good condition
+- Has charm, personality, or style that would delight someone specific
+- Better as a thoughtful gift than a $3 thrift store item
+
+KEEP (only if clearly personal/sentimental or actively useful):
+- Has strong sentimental signals (photos, personalization, handmade)
+- Or is a high-quality everyday item the owner likely still uses
+
+Default to SELL or DONATE when uncertain. Never recommend CURB unless damage or wear is clearly visible in the image.`;
 
   const userMessage = `Analyze this image and return the JSON object as specified.`;
 
@@ -186,6 +225,7 @@ export async function POST(request: NextRequest) {
   const textBlock = data.content?.find((b) => b.type === "text");
   const rawText = textBlock?.text?.trim() ?? "";
 
+  const ALLOWED_BEST_NEXT_LIFE = ["Sell", "Donate", "Gift", "Repurpose", "Curb", "Keep"] as const;
   let result: AnalyzeResult;
   try {
     const parsed = JSON.parse(rawText) as unknown;
@@ -195,15 +235,23 @@ export async function POST(request: NextRequest) {
       !("item_label" in parsed) ||
       !("value_range" in parsed) ||
       !("shippable" in parsed) ||
-      !("description" in parsed)
+      !("description" in parsed) ||
+      !("best_next_life" in parsed) ||
+      !("best_next_life_reason" in parsed)
     ) {
       throw new Error("Missing required fields");
+    }
+    const bnl = String((parsed as Record<string, unknown>).best_next_life);
+    if (!ALLOWED_BEST_NEXT_LIFE.includes(bnl as (typeof ALLOWED_BEST_NEXT_LIFE)[number])) {
+      throw new Error("Invalid best_next_life");
     }
     result = {
       item_label: String(parsed.item_label),
       value_range: String(parsed.value_range),
       shippable: Boolean(parsed.shippable),
       description: String(parsed.description),
+      best_next_life: bnl as AnalyzeResult["best_next_life"],
+      best_next_life_reason: String((parsed as Record<string, unknown>).best_next_life_reason),
     };
   } catch {
     return NextResponse.json(
