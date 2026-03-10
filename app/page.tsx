@@ -42,6 +42,20 @@ const ALL_DISPLAY_OPTIONS: { id: ActionOptionId; label: string; icon: React.Reac
   { id: 'recycle', label: 'Recycle', icon: ICON_RECYCLE },
 ];
 
+/** Order and subset for "Other options" chips: no Trash. */
+const OTHER_OPTIONS_ORDER: RecommendResult['recommendation'][] = ['sell', 'donate', 'gift', 'keep', 'repurpose', 'curb'];
+
+/** Action phrase for recommendation CTA: "Gift it →", etc. */
+const RECOMMENDATION_ACTION_PHRASES: Record<RecommendResult['recommendation'], string> = {
+  sell: 'Sell it',
+  donate: 'Donate it',
+  gift: 'Gift it',
+  keep: 'Keep it',
+  repurpose: 'Repurpose it',
+  curb: 'Curb it',
+  trash: 'Trash it',
+};
+
 const LOADING_PHRASES = [
   'Looking at what this is',
   'Checking useful possibilities',
@@ -130,13 +144,15 @@ function firstSentence(text: string): string {
   return i === -1 ? trimmed : trimmed.slice(0, i + 1).trim();
 }
 
-/** Recommendation headline: "Donate this", "Curb it", etc. */
-function recommendationHeadline(label: string): string {
-  return label === 'Curb it' ? label : `${label} this`;
+/** Decision title for card: Sell, Donate, Gift, Keep, Repurpose, Curb (no "this"). */
+function getDecisionTitle(id: RecommendResult['recommendation']): string {
+  if (id === 'curb') return 'Curb';
+  return ACTION_OPTIONS.find(o => o.id === id)?.label ?? id;
 }
 
 export default function Home() {
   const inputRef = useRef<HTMLInputElement>(null);
+  const refinementPhotoRef = useRef<HTMLInputElement>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AnalyzeResult | null>(null);
@@ -146,10 +162,16 @@ export default function Home() {
   const [recommendError, setRecommendError] = useState<string | null>(null);
   const [chosenDecision, setChosenDecision] = useState<string | null>(null);
   const [loadingPhraseIndex, setLoadingPhraseIndex] = useState(0);
+  const [refinementNote, setRefinementNote] = useState('');
+  const [showNoteInput, setShowNoteInput] = useState(false);
+  const [refinementPhotoUrl, setRefinementPhotoUrl] = useState<string | null>(null);
 
   useEffect(() => {
     return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
   }, [previewUrl]);
+  useEffect(() => {
+    return () => { if (refinementPhotoUrl) URL.revokeObjectURL(refinementPhotoUrl); };
+  }, [refinementPhotoUrl]);
 
   useEffect(() => {
     if (!loading) return;
@@ -172,6 +194,10 @@ export default function Home() {
     setRecommendError(null);
     setChosenDecision(null);
     setLoadingPhraseIndex(0);
+    setRefinementNote('');
+    setShowNoteInput(false);
+    if (refinementPhotoUrl) URL.revokeObjectURL(refinementPhotoUrl);
+    setRefinementPhotoUrl(null);
     setLoading(true);
 
     try {
@@ -217,6 +243,7 @@ export default function Home() {
             item_label,
             value_range,
             shippable: shippable ?? false,
+            user_note: refinementNote.trim() || undefined,
           }),
         });
         const recRaw = await recRes.text();
@@ -250,6 +277,52 @@ export default function Home() {
     ? ACTION_OPTIONS.find(o => o.id === recommendResult.recommendation)
     : null;
 
+  const handleRefinementPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (refinementPhotoUrl) URL.revokeObjectURL(refinementPhotoUrl);
+    setRefinementPhotoUrl(URL.createObjectURL(file));
+    e.target.value = '';
+  };
+
+  const fetchRecommendWithNote = async () => {
+    if (!result || recommendLoading) return;
+    const item_label = result.item_label;
+    const value_range = result.value_range;
+    const shippable = typeof result.shippable === 'boolean' ? result.shippable : deriveShippable(result);
+    setRecommendLoading(true);
+    setRecommendError(null);
+    try {
+      const recRes = await fetch('/api/recommend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          item_label,
+          value_range,
+          shippable,
+          user_note: refinementNote.trim() || undefined,
+        }),
+      });
+      const recRaw = await recRes.text();
+      let recData: RecommendResult & { error?: string; details?: string };
+      try {
+        recData = recRaw ? JSON.parse(recRaw) : {};
+      } catch {
+        setRecommendError('retry');
+        return;
+      }
+      if (!recRes.ok) {
+        setRecommendError('retry');
+        return;
+      }
+      setRecommendResult(recData as RecommendResult);
+    } catch {
+      setRecommendError('retry');
+    } finally {
+      setRecommendLoading(false);
+    }
+  };
+
   return (
     <main style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '48px 24px' }}>
       <div style={{ width: '100%', maxWidth: '390px' }}>
@@ -274,7 +347,7 @@ export default function Home() {
           style={{ position: 'absolute', width: 0, height: 0, opacity: 0, pointerEvents: 'none' }} aria-hidden />
         <div role="button" tabIndex={0} onClick={handleZoneClick}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleZoneClick(); } }}
-          style={{ marginTop: '32px', background: 'var(--surface)', borderRadius: '28px', border: '1.5px dashed var(--soft)', height: '280px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', cursor: 'pointer', overflow: 'hidden', position: 'relative' }}>
+          style={{ marginTop: '28px', background: 'var(--surface)', borderRadius: '20px', border: '1.5px dashed var(--soft)', height: '280px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', cursor: 'pointer', overflow: 'hidden', position: 'relative' }}>
           {previewUrl ? (
             <img src={previewUrl} alt="Selected item" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '26px' }} />
           ) : (
@@ -306,108 +379,161 @@ export default function Home() {
 
         {/* Analysis card: item identity → practical context */}
         {!loading && result && (
-          <div style={{ marginTop: '24px', padding: '20px', background: 'var(--white)', borderRadius: '16px', border: '1px solid var(--surface2)', boxShadow: '0 2px 8px rgba(44,36,22,0.06)' }}>
-            <p style={{ fontFamily: 'var(--font-cormorant)', fontSize: '18px', fontWeight: 500, color: 'var(--ink)', marginBottom: '8px' }}>{result.item_label}</p>
-            <p style={{ fontSize: '13px', fontWeight: 500, color: 'var(--accent)', marginBottom: '8px' }}>{result.value_range}</p>
-            <p style={{ fontSize: '12px', color: 'var(--ink-soft)', letterSpacing: '0.04em', marginBottom: '12px' }}>
-              {result.shippable ? 'Shipping possible' : 'Local only'}
+          <div style={{ marginTop: '20px', padding: '20px', background: 'var(--white)', borderRadius: '18px', border: '1px solid var(--surface2)', boxShadow: '0 2px 8px rgba(44,36,22,0.06)' }}>
+            <p style={{ fontFamily: 'var(--font-cormorant)', fontSize: '18px', lineHeight: 1.35, fontWeight: 500, color: 'var(--ink)', marginBottom: '8px' }}>{result.item_label}</p>
+            <p style={{ fontSize: '14px', lineHeight: 1.3, fontWeight: 500, color: 'var(--accent)', marginBottom: '8px' }}>{result.value_range}</p>
+            <p style={{ fontSize: '13px', lineHeight: 1.3, fontWeight: 500, color: 'var(--ink-soft)', marginBottom: '10px' }}>
+              {result.shippable ? 'Easy to ship' : 'Local only'}
             </p>
-            <p style={{ fontSize: '13px', color: 'var(--ink-soft)', lineHeight: 1.5, marginBottom: 0 }}>{firstSentence(result.description)}</p>
+            <p style={{ fontSize: '14px', lineHeight: 1.5, fontWeight: 400, color: 'var(--ink-soft)', marginBottom: 0 }}>{firstSentence(result.description)}</p>
+          </div>
+        )}
+
+        {/* Optional refinement: Know something more? */}
+        {!loading && result && (
+          <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: '1px solid var(--surface2)' }}>
+            <p style={{ fontSize: '13px', lineHeight: 1.2, fontWeight: 500, color: 'var(--ink-soft)', marginBottom: '10px' }}>Add something?</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+              <input
+                ref={refinementPhotoRef}
+                type="file"
+                accept="image/*"
+                onChange={handleRefinementPhotoChange}
+                style={{ position: 'absolute', width: 0, height: 0, opacity: 0, pointerEvents: 'none' }}
+                aria-hidden
+              />
+              <button
+                type="button"
+                onClick={() => refinementPhotoRef.current?.click()}
+                className="goshed-secondary-chip"
+              >
+                Add photo
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowNoteInput(true)}
+                className="goshed-secondary-chip"
+              >
+                Add note
+              </button>
+            </div>
+            {refinementPhotoUrl && (
+              <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <img src={refinementPhotoUrl} alt="Extra" style={{ width: '48px', height: '48px', objectFit: 'cover', borderRadius: '8px' }} />
+                <button
+                  type="button"
+                  onClick={() => { if (refinementPhotoUrl) URL.revokeObjectURL(refinementPhotoUrl); setRefinementPhotoUrl(null); }}
+                  style={{ fontSize: '11px', color: 'var(--ink-soft)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                >
+                  Remove
+                </button>
+              </div>
+            )}
+            {showNoteInput && (
+              <div style={{ marginTop: '10px' }}>
+                <textarea
+                  value={refinementNote}
+                  onChange={(e) => setRefinementNote(e.target.value)}
+                  placeholder="Brand, maker, label, condition, size, missing pieces, or sentimental context."
+                  rows={3}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    fontSize: '13px',
+                    color: 'var(--ink)',
+                    background: 'var(--white)',
+                    border: '1px solid var(--surface2)',
+                    borderRadius: '10px',
+                    fontFamily: 'inherit',
+                    resize: 'vertical',
+                    minHeight: '72px',
+                  }}
+                />
+                <p style={{ fontSize: '11px', color: 'var(--ink-soft)', marginTop: '6px', marginBottom: 0 }}>
+                  e.g. Found label on back says XYZ · Set of 8 · One handle is chipped
+                </p>
+                {recommendResult && refinementNote.trim() && (
+                  <button
+                    type="button"
+                    onClick={fetchRecommendWithNote}
+                    disabled={recommendLoading}
+                    className="goshed-secondary-chip"
+                    style={{ marginTop: '10px', color: 'var(--green)', borderColor: 'var(--green)' }}
+                  >
+                    {recommendLoading ? 'Updating…' : 'Update recommendation'}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
 
         {/* Recommendation spinner */}
         {result && recommendLoading && (
-          <div style={{ marginTop: '24px', padding: '20px', background: 'var(--surface)', borderRadius: '16px', border: '1px solid var(--surface2)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
+          <div style={{ marginTop: '16px', padding: '20px', background: 'var(--surface)', borderRadius: '18px', border: '1px solid var(--surface2)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
             <span style={{ width: '22px', height: '22px', border: '2px solid var(--soft)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'goshed-spin 0.8s linear infinite' }} />
             <span style={{ color: 'var(--ink-soft)', fontSize: '14px' }}>Getting recommendation…</span>
           </div>
         )}
 
-        {/* Recommendation card */}
-        {result && !recommendLoading && recommendResult && (
-          <div style={{ marginTop: '24px', padding: '24px', background: 'var(--surface)', borderRadius: '16px', border: '1px solid var(--soft)', boxShadow: '0 2px 8px rgba(44,36,22,0.06)' }}>
-            <p style={{ fontSize: '11px', color: 'var(--ink-soft)', letterSpacing: '0.06em', marginBottom: '12px', marginTop: 0 }}>Best Next Life</p>
-            <p style={{ fontFamily: 'var(--font-cormorant)', fontSize: '18px', fontWeight: 600, color: 'var(--ink)', marginBottom: '10px', marginTop: 0 }}>
-              {recommendationHeadline(ACTION_OPTIONS.find(o => o.id === recommendResult.recommendation)?.label ?? recommendResult.recommendation)}
-            </p>
-            <p style={{ fontSize: '14px', color: 'var(--ink)', lineHeight: 1.5, marginBottom: 0, marginTop: 0 }}>{firstSentence(recommendResult.reason)}</p>
-          </div>
-        )}
-
-        {/* Primary action: single medium-width button centered below card */}
+        {/* Recommendation card: clickable action title is the primary CTA */}
         {result && !recommendLoading && recommendResult && !chosenDecision && recommendedAction && (
-          <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <button
-              onClick={() => setChosenDecision(recommendResult.recommendation)}
-              style={{
-                height: '42px',
-                paddingLeft: '28px',
-                paddingRight: '28px',
-                background: 'var(--green)',
-                color: 'white',
-                border: 'none',
-                borderRadius: '14px',
-                fontSize: '14px',
-                fontWeight: 500,
-                fontFamily: 'inherit',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-              }}
-            >
-              {recommendedAction.icon}
-              <span>{recommendedAction.label}</span>
-            </button>
-
-            {/* Alternative actions: quiet inline */}
-            <p style={{ fontSize: '11px', color: 'var(--ink-soft)', letterSpacing: '0.04em', marginTop: '18px', marginBottom: '6px' }}>Or instead</p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: '4px 0', maxWidth: '320px', lineHeight: 1.6 }}>
-              {ACTION_OPTIONS.filter(o => o.id !== recommendResult.recommendation).map((btn, i) => (
-                <span key={btn.id} style={{ display: 'inline-flex', alignItems: 'center' }}>
-                  {i > 0 && <span style={{ color: 'var(--ink-soft)', fontSize: '12px', margin: '0 6px', opacity: 0.7 }}>·</span>}
-                  <button
-                    type="button"
-                    onClick={() => setChosenDecision(btn.id)}
-                    style={{
-                      padding: 0,
-                      background: 'none',
-                      border: 'none',
-                      color: 'var(--ink-soft)',
-                      fontSize: '12px',
-                      fontWeight: 400,
-                      fontFamily: 'inherit',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {btn.label === 'Curb it' ? 'Curb' : btn.label}
-                  </button>
+          <>
+            <div style={{ marginTop: '16px', padding: '20px', background: 'var(--surface)', borderRadius: '18px', border: '1px solid var(--soft)', boxShadow: '0 2px 8px rgba(44,36,22,0.06)' }}>
+              <p style={{ fontSize: '13px', lineHeight: 1.2, fontWeight: 500, color: 'var(--ink-soft)', marginBottom: '10px', marginTop: 0 }}>Best Next Life</p>
+              <button
+                type="button"
+                className="goshed-primary-btn"
+                onClick={() => setChosenDecision(recommendResult.recommendation)}
+                style={{ marginBottom: '12px', width: '100%', justifyContent: 'center' }}
+              >
+                <span style={{ fontFamily: 'var(--font-cormorant)' }}>
+                  {RECOMMENDATION_ACTION_PHRASES[recommendResult.recommendation]} →
                 </span>
-              ))}
+              </button>
+              <p style={{ fontSize: '14px', lineHeight: 1.5, color: 'var(--ink)', marginBottom: 0, marginTop: 0 }}>{firstSentence(recommendResult.reason)}</p>
             </div>
-          </div>
+
+            {/* Other options: pill chips */}
+            <p style={{ fontSize: '13px', lineHeight: 1.2, fontWeight: 500, color: 'var(--ink-soft)', textAlign: 'center', marginTop: '18px', marginBottom: '10px' }}>Other options</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '8px' }}>
+              {OTHER_OPTIONS_ORDER.filter(id => id !== recommendResult.recommendation).map(id => {
+                const opt = ACTION_OPTIONS.find(o => o.id === id);
+                if (!opt) return null;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    className="goshed-secondary-chip"
+                    onClick={() => setChosenDecision(opt.id)}
+                  >
+                    {opt.id === 'curb' ? 'Curb' : opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </>
         )}
 
         {/* Post-decision confirmation */}
         {chosenDecision && recommendResult && (
-          <div style={{ marginTop: '16px', padding: '24px', background: 'var(--surface)', borderRadius: '16px', border: '1px solid var(--soft)' }}>
+          <div style={{ marginTop: '16px', padding: '20px', background: 'var(--surface)', borderRadius: '18px', border: '1px solid var(--soft)' }}>
             {(() => {
               const btn = ALL_DISPLAY_OPTIONS.find(b => b.id === chosenDecision);
+              const displayLabel = btn?.id === 'curb' ? 'Curb' : btn?.label;
               return (
                 <>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
                     <span style={{ display: 'flex' }}>{btn?.icon}</span>
-                    <span style={{ fontFamily: 'var(--font-cormorant)', fontSize: '18px', color: 'var(--ink)' }}>
-                      {btn?.label} — good call.
+                    <span style={{ fontFamily: 'var(--font-cormorant)', fontSize: '16px', fontWeight: 600, color: 'var(--ink)' }}>
+                      {displayLabel} — good call.
                     </span>
                   </div>
-                  <p style={{ fontSize: '13px', color: 'var(--green)', fontWeight: 500, lineHeight: 1.5, marginBottom: '16px' }}>
+                  <p style={{ fontSize: '14px', color: 'var(--green)', fontWeight: 500, lineHeight: 1.5, marginBottom: '14px' }}>
                     {recommendResult.next_step}
                   </p>
                   <button onClick={() => setChosenDecision(null)}
-                    style={{ fontSize: '12px', color: 'var(--ink-soft)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+                    style={{ fontSize: '13px', color: 'var(--ink-soft)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
                     ← Change my mind
                   </button>
                 </>
@@ -418,13 +544,13 @@ export default function Home() {
 
         {/* Errors */}
         {result && !recommendLoading && recommendError && (
-          <div style={{ marginTop: '16px', padding: '16px', background: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--soft)', color: 'var(--ink-soft)', fontSize: '14px' }}>
+          <div style={{ marginTop: '16px', padding: '16px', background: 'var(--surface)', borderRadius: '18px', border: '1px solid var(--soft)', color: 'var(--ink-soft)', fontSize: '14px' }}>
             <p style={{ margin: 0, marginBottom: '6px' }}>We couldn&apos;t decide just yet.</p>
             <p style={{ margin: 0, fontSize: '13px' }}>Try again or choose the best next life yourself.</p>
           </div>
         )}
         {!loading && error && (
-          <div style={{ marginTop: '20px', padding: '16px', background: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--soft)', color: 'var(--ink-soft)', fontSize: '14px' }}>{error}</div>
+          <div style={{ marginTop: '20px', padding: '16px', background: 'var(--surface)', borderRadius: '18px', border: '1px solid var(--soft)', color: 'var(--ink-soft)', fontSize: '14px' }}>{error}</div>
         )}
 
       </div>

@@ -1,12 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
+  const [authError, setAuthError] = useState(false);
   const supabase = createSupabaseBrowserClient();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    if (searchParams.get("error") === "auth") setAuthError(true);
+  }, [searchParams]);
 
   const handleLogin = async () => {
     await supabase.auth.signInWithOtp({
@@ -39,6 +46,11 @@ export default function LoginPage() {
       }}
     >
       <h2>Sign in to GoShed</h2>
+      {authError && (
+        <p style={{ color: "#c00", fontSize: 14, marginBottom: 12 }}>
+          Sign-in link expired or invalid. Request a new magic link below.
+        </p>
+      )}
       <p style={{ color: "#888", fontSize: 14 }}>
         We'll email you a magic link.
       </p>

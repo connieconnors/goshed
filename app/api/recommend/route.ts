@@ -21,20 +21,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "ANTHROPIC_API_KEY is not configured" }, { status: 500 });
   }
 
-  let body: { item_label?: string; value_range?: string; shippable?: boolean };
+  let body: { item_label?: string; value_range?: string; shippable?: boolean; user_note?: string };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { item_label, value_range, shippable } = body;
+  const { item_label, value_range, shippable, user_note } = body;
   if (!item_label || value_range === undefined || shippable === undefined) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  // Temporary debug: confirm request body before Anthropic fetch
-  console.log("[recommend] request body:", { item_label, value_range, shippable });
+  const noteText = typeof user_note === "string" ? user_note.trim() : "";
+  if (noteText) console.log("[recommend] user_note:", noteText.slice(0, 200));
 
   const systemPrompt = `You are GoShed: a calm, thoughtful decision engine for what to do with things people own. Determine the best next life for each item using the following logic. Return exactly one recommendation — no hedging.
 
@@ -66,7 +66,9 @@ Tone: warm, elegant, practical. Like a thoughtful friend who has already decided
 
   const userMessage = `Item: ${item_label}
 Value: ${value_range}
-Shippable: ${shippable}
+Shippable: ${shippable}${noteText ? `
+
+Additional context from the user (use this to refine your recommendation): ${noteText}` : ""}
 
 Life context (${LIFE_CONTEXT.name}):
 Events: ${LIFE_CONTEXT.events.join("; ")}
