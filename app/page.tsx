@@ -183,6 +183,7 @@ export default function Home() {
   const [refinementPhotoUrl, setRefinementPhotoUrl] = useState<string | null>(null);
   const [nearbyCharities, setNearbyCharities] = useState<NearbyCharitiesResponse | null>(null);
   const [nearbyCharitiesLoading, setNearbyCharitiesLoading] = useState(false);
+  const lastNearbyFetchKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
@@ -199,15 +200,26 @@ export default function Home() {
     return () => clearInterval(id);
   }, [loading]);
 
-  // When donate is recommended, fetch nearby charities (with geolocation if allowed)
+  // When donate is recommended, fetch nearby charities (with geolocation if allowed). Only once per recommendation.
   useEffect(() => {
+    console.log('[nearby-charities] effect ran', { recommendation: recommendResult?.recommendation, item_label: result?.item_label });
     if (!recommendResult || recommendResult.recommendation !== 'donate' || !result?.item_label) {
       setNearbyCharities(null);
+      lastNearbyFetchKeyRef.current = null;
       return;
     }
+    const key = `donate-${result.item_label}`;
+    if (lastNearbyFetchKeyRef.current === key) return;
+    lastNearbyFetchKeyRef.current = key;
+
     let cancelled = false;
+    let fetchFired = false;
     setNearbyCharitiesLoading(true);
     const fetchWithLocation = (lat?: number, lng?: number) => {
+      const hasCoords = lat != null && lng != null;
+      if (fetchFired && !hasCoords) return;
+      fetchFired = true; // set immediately so 10s fallback skips
+      console.log('[nearby-charities] sending lat/lng:', lat, lng);
       fetch('/api/nearby-charities', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -219,12 +231,16 @@ export default function Home() {
       })
         .then((res) => res.json())
         .then((data: NearbyCharitiesResponse) => {
+          console.log('[nearby-charities] API response:', { local: data.local, national: data.national, source: data.source });
           if (!cancelled) {
             setNearbyCharities(data);
+            console.log('[nearby-charities] setting state with:', data.local?.length, 'local results, source:', data.source);
+          } else {
+            console.log('[nearby-charities] skipped setState (cancelled)');
           }
         })
         .catch(() => {
-          if (!cancelled) {
+          if (!cancelled && !hasCoords) {
             setNearbyCharities({ local: [], national: NATIONAL_PICKUP_FALLBACK, source: 'national_only' });
           }
         })
@@ -233,15 +249,29 @@ export default function Home() {
         });
     };
     if (typeof navigator !== 'undefined' && navigator.geolocation) {
+      console.log('[nearby-charities] requesting geolocation...');
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           if (cancelled) return;
+          console.log('[nearby-charities] geolocation success', pos.coords.latitude, pos.coords.longitude);
           fetchWithLocation(pos.coords.latitude, pos.coords.longitude);
         },
-        () => fetchWithLocation(),
+        (err) => {
+          console.log('[nearby-charities] geolocation error/denied', err?.code, err?.message);
+          fetchWithLocation();
+        },
         { timeout: 8000, maximumAge: 300000 }
       );
+      // If user never responds to permission prompt, callback may never fire. Fallback so we still call the API.
+      const fallback = setTimeout(() => {
+        if (!fetchFired && !cancelled) {
+          console.log('[nearby-charities] geolocation fallback (no response in 10s), fetching national only');
+          fetchWithLocation();
+        }
+      }, 10000);
+      return () => { cancelled = true; clearTimeout(fallback); };
     } else {
+      console.log('[nearby-charities] no geolocation API, fetching national only');
       fetchWithLocation();
     }
     return () => { cancelled = true; };
@@ -623,6 +653,7 @@ export default function Home() {
             {/* Where to donate: nearby + national fallback (only when recommendation is donate) */}
             {recommendResult.recommendation === 'donate' && (
               <div style={{ marginTop: '20px', padding: '16px', background: 'var(--white)', borderRadius: '14px', border: '1px solid var(--surface2)' }}>
+                {console.log('[nearby-charities] render state:', JSON.stringify({ loading: nearbyCharitiesLoading, hasData: !!nearbyCharities, localCount: nearbyCharities?.local?.length, source: nearbyCharities?.source }))}
                 <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ink)', marginTop: 0, marginBottom: '12px' }}>Where to donate</p>
                 {nearbyCharitiesLoading ? (
                   <p style={{ fontSize: '13px', color: 'var(--ink-soft)', margin: 0 }}>Finding nearby options…</p>
@@ -696,6 +727,7 @@ export default function Home() {
             {/* Where to donate: also show when user overrode to donate */}
             {chosenDecision === 'donate' && (
               <div style={{ marginTop: '20px', padding: '16px', background: 'var(--white)', borderRadius: '14px', border: '1px solid var(--surface2)' }}>
+                {console.log('[nearby-charities] render state (post-decision):', JSON.stringify({ loading: nearbyCharitiesLoading, hasData: !!nearbyCharities, localCount: nearbyCharities?.local?.length, source: nearbyCharities?.source }))}
                 <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ink)', marginTop: 0, marginBottom: '12px' }}>Where to donate</p>
                 {nearbyCharitiesLoading ? (
                   <p style={{ fontSize: '13px', color: 'var(--ink-soft)', margin: 0 }}>Finding nearby options…</p>

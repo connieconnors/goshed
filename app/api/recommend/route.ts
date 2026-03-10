@@ -122,7 +122,8 @@ ${override ? `The user has chosen "${override}". Return JSON with recommendation
     if (!jsonMatch) {
       throw new Error("No JSON object found in model response");
     }
-    const parsed = JSON.parse(jsonMatch[0]) as unknown;
+    const jsonStr = jsonMatch[0].replace(/^```json\n?/, "").replace(/\n?```$/, "").trim();
+    const parsed = JSON.parse(jsonStr) as unknown;
     if (typeof parsed !== "object" || parsed === null || !("recommendation" in parsed) || !("reason" in parsed) || !("next_step" in parsed)) {
       throw new Error("Missing required fields");
     }
