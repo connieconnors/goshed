@@ -653,7 +653,6 @@ export default function Home() {
             {/* Where to donate: nearby + national fallback (only when recommendation is donate) */}
             {recommendResult.recommendation === 'donate' && (
               <div style={{ marginTop: '20px', padding: '16px', background: 'var(--white)', borderRadius: '14px', border: '1px solid var(--surface2)' }}>
-                {console.log('[nearby-charities] render state:', JSON.stringify({ loading: nearbyCharitiesLoading, hasData: !!nearbyCharities, localCount: nearbyCharities?.local?.length, source: nearbyCharities?.source }))}
                 <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ink)', marginTop: 0, marginBottom: '12px' }}>Where to donate</p>
                 {nearbyCharitiesLoading ? (
                   <p style={{ fontSize: '13px', color: 'var(--ink-soft)', margin: 0 }}>Finding nearby options…</p>
@@ -727,7 +726,6 @@ export default function Home() {
             {/* Where to donate: also show when user overrode to donate */}
             {chosenDecision === 'donate' && (
               <div style={{ marginTop: '20px', padding: '16px', background: 'var(--white)', borderRadius: '14px', border: '1px solid var(--surface2)' }}>
-                {console.log('[nearby-charities] render state (post-decision):', JSON.stringify({ loading: nearbyCharitiesLoading, hasData: !!nearbyCharities, localCount: nearbyCharities?.local?.length, source: nearbyCharities?.source }))}
                 <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ink)', marginTop: 0, marginBottom: '12px' }}>Where to donate</p>
                 {nearbyCharitiesLoading ? (
                   <p style={{ fontSize: '13px', color: 'var(--ink-soft)', margin: 0 }}>Finding nearby options…</p>
