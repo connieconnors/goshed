@@ -16,6 +16,8 @@ function LoginForm() {
   }, [searchParams]);
 
   const handleLogin = async () => {
+    const redirect = searchParams.get("redirect");
+    if (redirect) sessionStorage.setItem("redirect_after_login", redirect);
     await supabase.auth.signInWithOtp({
       email,
       options: { emailRedirectTo: `${window.location.origin}/auth/callback` },

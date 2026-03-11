@@ -2,6 +2,7 @@
 
 import { useRef, useState, useEffect } from 'react';
 import Link from 'next/link';
+import { createSupabaseBrowserClient } from '@/lib/supabase';
 
 type AnalyzeResult = {
   item_label: string;
@@ -63,6 +64,17 @@ const RECOMMENDATION_ACTION_PHRASES: Record<RecommendResult['recommendation'], s
   repurpose: 'Repurpose it',
   curb: 'Curb it',
   trash: 'Trash it',
+};
+
+/** Confirmation / done label: "Listed ✓", "Donated ✓", etc. */
+export const DECISION_DONE_LABELS: Record<RecommendResult['recommendation'], string> = {
+  sell: 'Listed ✓',
+  donate: 'Donated ✓',
+  gift: 'Gifted ✓',
+  keep: 'Kept ✓',
+  repurpose: 'Repurposed ✓',
+  curb: 'Curbed ✓',
+  trash: 'Trashed ✓',
 };
 
 const LOADING_PHRASES = [
@@ -184,10 +196,38 @@ export default function Home() {
   const [nearbyCharities, setNearbyCharities] = useState<NearbyCharitiesResponse | null>(null);
   const [nearbyCharitiesLoading, setNearbyCharitiesLoading] = useState(false);
   const lastNearbyFetchKeyRef = useRef<string | null>(null);
+  const analysisImageDataUrlRef = useRef<string | null>(null);
+  const savedForItemRef = useRef<string | null>(null);
+  const savedItemIdRef = useRef<string | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
+  const [decisionJustConfirmed, setDecisionJustConfirmed] = useState(false);
 
   useEffect(() => {
     return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
   }, [previewUrl]);
+
+  useEffect(() => {
+    const supabase = createSupabaseBrowserClient();
+    const setSession = () => {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        setIsLoggedIn(!!session?.user);
+      });
+    };
+    setSession();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => setSession());
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const redirect = typeof sessionStorage !== "undefined" ? sessionStorage.getItem("redirect_after_login") : null;
+    if (!redirect) return;
+    createSupabaseBrowserClient().auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        sessionStorage.removeItem("redirect_after_login");
+        window.location.href = redirect;
+      }
+    });
+  }, []);
   useEffect(() => {
     return () => { if (refinementPhotoUrl) URL.revokeObjectURL(refinementPhotoUrl); };
   }, [refinementPhotoUrl]);
@@ -290,6 +330,8 @@ export default function Home() {
     setRecommendError(null);
     setChosenDecision(null);
     setNearbyCharities(null);
+    savedForItemRef.current = null;
+    savedItemIdRef.current = null;
     setLoadingPhraseIndex(0);
     setRefinementNote('');
     setShowNoteInput(false);
@@ -299,6 +341,7 @@ export default function Home() {
 
     try {
       const dataUrl = await resizeAndToDataUrl(file);
+      analysisImageDataUrlRef.current = dataUrl;
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -370,9 +413,52 @@ export default function Home() {
     }
   };
 
+  // Save to Supabase when we have analysis + recommendation and user is logged in (once per item)
+  useEffect(() => {
+    if (!result || !recommendResult) return;
+    const key = `${result.item_label}-${recommendResult.recommendation}`;
+    if (savedForItemRef.current === key) return;
+    savedForItemRef.current = key;
+    const supabase = createSupabaseBrowserClient();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session?.user) return;
+      fetch('/api/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          photo_url: analysisImageDataUrlRef.current ?? undefined,
+          item_label: result.item_label,
+          value_range_raw: result.value_range,
+          recommendation: recommendResult.recommendation,
+          notes: refinementNote.trim() || undefined,
+        }),
+      })
+        .then((res) => res.json())
+        .then((data: { id?: string }) => {
+          if (data?.id) savedItemIdRef.current = data.id;
+        })
+        .catch((err) => console.error('[shed] save item failed:', err));
+    });
+  }, [result, recommendResult]);
+
   const recommendedAction = recommendResult
     ? ACTION_OPTIONS.find(o => o.id === recommendResult.recommendation)
     : null;
+
+  const handlePrimaryDecision = () => {
+    if (!recommendResult) return;
+    const decision = recommendResult.recommendation;
+    setChosenDecision(decision);
+    setDecisionJustConfirmed(true);
+    if (savedItemIdRef.current) {
+      fetch(`/api/items/${savedItemIdRef.current}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'done' }),
+      }).catch((err) => console.error('[shed] mark decision failed:', err));
+    }
+    setTimeout(() => setDecisionJustConfirmed(false), 800);
+  };
 
   const handleRefinementPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -453,6 +539,13 @@ export default function Home() {
       }
       setRecommendResult(recData as RecommendResult);
       setChosenDecision(optionId);
+      if (savedItemIdRef.current) {
+        fetch(`/api/items/${savedItemIdRef.current}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recommendation: optionId }),
+        }).catch((err) => console.error('[shed] update item recommendation failed:', err));
+      }
     } catch {
       setRecommendError('retry');
     } finally {
@@ -474,9 +567,18 @@ export default function Home() {
               let it go, beautifully
             </p>
           </div>
-          <Link href="/login" style={{ fontSize: '12px', color: 'var(--ink-soft)', textDecoration: 'none', marginTop: '8px', borderBottom: '1px solid var(--soft)', paddingBottom: '1px' }}>
-            Sign in
-          </Link>
+          <div style={{ marginTop: '8px' }}>
+            {isLoggedIn === true && (
+              <Link href="/dashboard" style={{ fontSize: '12px', color: 'var(--ink-soft)', textDecoration: 'none', borderBottom: '1px solid var(--soft)', paddingBottom: '1px' }}>
+                My Shed
+              </Link>
+            )}
+            {isLoggedIn === false && (
+              <Link href="/login" style={{ fontSize: '12px', color: 'var(--ink-soft)', textDecoration: 'none', borderBottom: '1px solid var(--soft)', paddingBottom: '1px' }}>
+                Sign in
+              </Link>
+            )}
+          </div>
         </div>
 
         {/* Photo zone */}
@@ -496,6 +598,36 @@ export default function Home() {
             </>
           )}
         </div>
+
+        {/* Logged-out only: tagline, example pills, no-account line */}
+        {isLoggedIn === false && (
+          <div style={{ marginTop: '28px', textAlign: 'center' }}>
+            <p style={{ fontFamily: 'var(--font-cormorant)', fontSize: '20px', fontWeight: 300, color: 'var(--ink-soft)', lineHeight: 1.4, margin: 0 }}>
+              GoShed tells you what to do with it.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '16px' }}>
+              {['Sell', 'Donate', 'Gift'].map((label) => (
+                <span
+                  key={label}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    background: 'var(--surface)',
+                    color: 'var(--ink)',
+                    border: '1px solid var(--surface2)',
+                  }}
+                >
+                  {label}
+                </span>
+              ))}
+            </div>
+            <p style={{ fontSize: '12px', color: 'var(--ink-soft)', marginTop: '14px', marginBottom: 0 }}>
+              No account needed to try
+            </p>
+          </div>
+        )}
 
         {/* Loading state: minimal, centered under image */}
         {loading && (
@@ -621,7 +753,7 @@ export default function Home() {
               <button
                 type="button"
                 className="goshed-primary-btn"
-                onClick={() => setChosenDecision(recommendResult.recommendation)}
+                onClick={handlePrimaryDecision}
                 style={{ marginBottom: '12px', width: '100%', justifyContent: 'center' }}
               >
                 <span style={{ fontFamily: 'var(--font-cormorant)' }}>
@@ -696,16 +828,20 @@ export default function Home() {
         {/* Post-decision confirmation */}
         {chosenDecision && recommendResult && (
           <>
-            <div style={{ marginTop: '16px', padding: '20px', background: 'var(--surface)', borderRadius: '18px', border: '1px solid var(--soft)' }}>
+            <div
+              className={decisionJustConfirmed ? 'goshed-decision-confirmed' : ''}
+              style={{ marginTop: '16px', padding: '20px', background: 'var(--surface)', borderRadius: '18px', border: '1px solid var(--soft)' }}
+            >
               {(() => {
                 const btn = ALL_DISPLAY_OPTIONS.find(b => b.id === chosenDecision);
                 const displayLabel = btn?.id === 'curb' ? 'Curb' : btn?.label;
+                const doneLabel = DECISION_DONE_LABELS[chosenDecision as keyof typeof DECISION_DONE_LABELS] ?? `${displayLabel} ✓`;
                 return (
                   <>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                      <span style={{ display: 'flex' }}>{btn?.icon}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+                      <span style={{ display: 'flex', width: '24px', height: '24px', borderRadius: '50%', background: 'var(--green)', color: 'var(--white)', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 700 }}>✓</span>
                       <span style={{ fontFamily: 'var(--font-cormorant)', fontSize: '16px', fontWeight: 600, color: 'var(--ink)' }}>
-                        {displayLabel} — good call.
+                        {doneLabel.replace(' ✓', '')} — good call.
                       </span>
                     </div>
                     <p style={{ fontSize: '14px', color: 'var(--ink)', lineHeight: 1.5, marginBottom: '8px' }}>

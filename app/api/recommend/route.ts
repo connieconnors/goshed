@@ -2,13 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 
-const LIFE_CONTEXT = {
-  name: "Connie",
-  events: ["summer backyard party in July", "son Ryan moving to Brooklyn"],
-  causes: ["North Shore Soup Kitchen silent auction next month"],
-  people: ["Maya - niece graduating law school in May"],
-};
-
 type RecommendResult = {
   recommendation: "gift" | "donate" | "sell" | "keep" | "trash" | "curb" | "repurpose";
   reason: string;
@@ -77,10 +70,7 @@ Shippable: ${shippable}${noteText ? `
 
 Additional context from the user (use this to refine your recommendation): ${noteText}` : ""}
 
-Life context (${LIFE_CONTEXT.name}):
-Events: ${LIFE_CONTEXT.events.join("; ")}
-Causes: ${LIFE_CONTEXT.causes.join("; ")}
-People: ${LIFE_CONTEXT.people.join("; ")}
+Consider whether this item would make a thoughtful gift for someone — a recent grad, someone moving, a friend who would appreciate it.
 
 ${override ? `The user has chosen "${override}". Return JSON with recommendation set to "${override}", and provide a reason and next_step that match this choice (follow the next_step rules for that recommendation).` : "Using the decision guidance, choose the single best next life for this item."} Respond with only valid JSON: recommendation, reason, next_step.`;
 
