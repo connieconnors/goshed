@@ -207,26 +207,28 @@ export default function Home() {
   }, [previewUrl]);
 
   useEffect(() => {
-    const supabase = createSupabaseBrowserClient();
-    const setSession = () => {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        setIsLoggedIn(!!session?.user);
-      });
+    const checkSession = async () => {
+      const res = await fetch("/api/auth/session", { credentials: "include" });
+      const { user } = await res.json().catch(() => ({ user: null }));
+      setIsLoggedIn(!!user);
     };
-    setSession();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => setSession());
+    checkSession();
+    const supabase = createSupabaseBrowserClient();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => checkSession());
     return () => subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
     const redirect = typeof sessionStorage !== "undefined" ? sessionStorage.getItem("redirect_after_login") : null;
     if (!redirect) return;
-    createSupabaseBrowserClient().auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        sessionStorage.removeItem("redirect_after_login");
-        window.location.href = redirect;
-      }
-    });
+    fetch("/api/auth/session", { credentials: "include" })
+      .then((res) => res.json().catch(() => ({ user: null })))
+      .then(({ user }) => {
+        if (user) {
+          sessionStorage.removeItem("redirect_after_login");
+          window.location.href = redirect;
+        }
+      });
   }, []);
   useEffect(() => {
     return () => { if (refinementPhotoUrl) URL.revokeObjectURL(refinementPhotoUrl); };
@@ -415,31 +417,27 @@ export default function Home() {
 
   // Save to Supabase when we have analysis + recommendation and user is logged in (once per item)
   useEffect(() => {
-    if (!result || !recommendResult) return;
+    if (!result || !recommendResult || isLoggedIn !== true) return;
     const key = `${result.item_label}-${recommendResult.recommendation}`;
     if (savedForItemRef.current === key) return;
     savedForItemRef.current = key;
-    const supabase = createSupabaseBrowserClient();
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session?.user) return;
-      fetch('/api/items', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          photo_url: analysisImageDataUrlRef.current ?? undefined,
-          item_label: result.item_label,
-          value_range_raw: result.value_range,
-          recommendation: recommendResult.recommendation,
-          notes: refinementNote.trim() || undefined,
-        }),
+    fetch('/api/items', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        photo_url: analysisImageDataUrlRef.current ?? undefined,
+        item_label: result.item_label,
+        value_range_raw: result.value_range,
+        recommendation: recommendResult.recommendation,
+        notes: refinementNote.trim() || undefined,
+      }),
+    })
+      .then((res) => res.json())
+      .then((data: { id?: string }) => {
+        if (data?.id) savedItemIdRef.current = data.id;
       })
-        .then((res) => res.json())
-        .then((data: { id?: string }) => {
-          if (data?.id) savedItemIdRef.current = data.id;
-        })
-        .catch((err) => console.error('[shed] save item failed:', err));
-    });
-  }, [result, recommendResult]);
+      .catch((err) => console.error('[shed] save item failed:', err));
+  }, [result, recommendResult, isLoggedIn]);
 
   const recommendedAction = recommendResult
     ? ACTION_OPTIONS.find(o => o.id === recommendResult.recommendation)

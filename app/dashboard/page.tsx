@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createSupabaseBrowserClient } from "@/lib/supabase";
 
 type ShedItem = {
   id: string;
@@ -47,27 +46,33 @@ export default function DashboardPage() {
   const [doneAnimatingId, setDoneAnimatingId] = useState<string | null>(null);
 
   useEffect(() => {
-    const supabase = createSupabaseBrowserClient();
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session?.user) {
-        router.replace("/login?redirect=/dashboard");
-        return;
-      }
-      supabase
-        .from("items")
-        .select("id, photo_url, item_label, recommendation, value_range_raw, value_low, value_high, status, created_at")
-        .eq("user_id", session.user.id)
-        .order("created_at", { ascending: false })
-        .then(({ data, error }) => {
-          if (error) {
-            console.error("[dashboard] fetch error:", error);
-            setLoading(false);
-            return;
-          }
-          setItems((data as ShedItem[]) ?? []);
-          setLoading(false);
-        });
-    });
+    let cancelled = false;
+    fetch("/api/auth/session", { credentials: "include" })
+      .then((res) => res.json().catch(() => ({ user: null })))
+      .then(({ user }) => {
+        if (cancelled) return null;
+        if (!user) {
+          router.replace("/login?redirect=/dashboard");
+          return null;
+        }
+        return fetch("/api/items", { credentials: "include" });
+      })
+      .then((res) => {
+        if (cancelled || res === null) return null;
+        if (!res.ok) return [];
+        return res.json();
+      })
+      .then((data) => {
+        if (cancelled) return;
+        if (data !== null) setItems(Array.isArray(data) ? (data as ShedItem[]) : []);
+      })
+      .catch((err) => {
+        if (!cancelled) console.error("[dashboard] fetch error:", err);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
   }, [router]);
 
   const filteredItems =

@@ -8,16 +8,23 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [authError, setAuthError] = useState(false);
-  const supabase = createSupabaseBrowserClient();
+  const [mounted, setMounted] = useState(false);
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    if (searchParams.get("error") === "auth") setAuthError(true);
-  }, [searchParams]);
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    if (typeof window !== "undefined" && searchParams.get("error") === "auth") setAuthError(true);
+  }, [mounted, searchParams]);
 
   const handleLogin = async () => {
+    if (typeof window === "undefined") return;
     const redirect = searchParams.get("redirect");
     if (redirect) sessionStorage.setItem("redirect_after_login", redirect);
+    const supabase = createSupabaseBrowserClient();
     await supabase.auth.signInWithOtp({
       email,
       options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
@@ -34,6 +41,9 @@ function LoginForm() {
         </p>
         <p style={{ color: "#888", fontSize: 14 }}>
           Click the link to sign in — no password needed.
+        </p>
+        <p style={{ color: "#888", fontSize: 14, marginTop: 16 }}>
+          Check your spam folder if you don&apos;t see it within a minute. Only one magic link is valid at a time — wait 60 seconds before requesting another.
         </p>
       </div>
     );

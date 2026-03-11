@@ -6,6 +6,13 @@ export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
 
+  const hasCode = code != null && code !== "";
+  console.error("[auth/callback] URL code param present:", hasCode, {
+    hasCode,
+    codeLength: code?.length ?? 0,
+    allParams: Object.fromEntries(searchParams.entries()),
+  });
+
   if (code) {
     const cookieStore = await cookies();
     const supabase = createServerClient(
@@ -24,9 +31,16 @@ export async function GET(request: Request) {
         },
       }
     );
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
     if (error) {
-      console.error("[auth/callback] exchangeCodeForSession failed:", error.message);
+      console.error("[auth/callback] exchangeCodeForSession failed:", {
+        message: error.message,
+        name: error.name,
+        status: error.status,
+        fullError: error,
+        codePresent: true,
+        codeLength: code.length,
+      });
       return NextResponse.redirect(`${origin}/login?error=auth`);
     }
   }
