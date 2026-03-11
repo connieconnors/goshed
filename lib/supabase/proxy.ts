@@ -26,8 +26,8 @@ export async function updateSession(request: NextRequest) {
               ...options,
               ...(isProduction && { secure: true, sameSite: "lax" as const }),
             };
-            request.cookies.set(name, value, opts as object);
-            response.cookies.set(name, value, opts as object);
+            request.cookies.set({ name, value, ...opts });
+            response.cookies.set({ name, value, ...opts });
           });
         },
       },
