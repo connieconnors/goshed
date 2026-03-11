@@ -29,6 +29,17 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
+## Supabase auth (magic link) in production
+
+For magic-link sign-in to work on your live site (e.g. goshed.app):
+
+1. **Redirect URLs** – In [Supabase Dashboard](https://supabase.com/dashboard) → your project → **Authentication** → **URL Configuration**, add your production callback to **Redirect URLs**, e.g.:
+   - `https://goshed.app/auth/callback`
+   - `https://www.goshed.app/auth/callback` (if you use www)
+2. **Site URL** – Set **Site URL** to your production origin (e.g. `https://goshed.app`).
+
+If the redirect URL isn’t allowlisted, Supabase can reject the magic-link request and the login page will show the error instead of “Check your email.”
+
 ## Deploy on Vercel
 
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.

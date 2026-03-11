@@ -8,6 +8,8 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [authError, setAuthError] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
   const [mounted, setMounted] = useState(false);
   const searchParams = useSearchParams();
 
@@ -22,13 +24,22 @@ function LoginForm() {
 
   const handleLogin = async () => {
     if (typeof window === "undefined") return;
+    setSendError(null);
+    setSending(true);
     const redirect = searchParams.get("redirect");
     if (redirect) sessionStorage.setItem("redirect_after_login", redirect);
     const supabase = createSupabaseBrowserClient();
-    await supabase.auth.signInWithOtp({
+    const redirectTo = `${window.location.origin}/auth/callback`;
+    const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+      options: { emailRedirectTo: redirectTo },
     });
+    setSending(false);
+    if (error) {
+      console.error("[login] signInWithOtp failed:", error.message, error);
+      setSendError(error.message || "Could not send magic link. Try again or check that this site is allowed in your Supabase project.");
+      return;
+    }
     setSent(true);
   };
 
@@ -63,6 +74,11 @@ function LoginForm() {
           Sign-in link expired or invalid. Request a new magic link below.
         </p>
       )}
+      {sendError && (
+        <p style={{ color: "#c00", fontSize: 14, marginBottom: 12 }}>
+          {sendError}
+        </p>
+      )}
       <p style={{ color: "#888", fontSize: 14 }}>
         We'll email you a magic link.
       </p>
@@ -82,19 +98,21 @@ function LoginForm() {
         }}
       />
       <button
+        type="button"
         onClick={handleLogin}
+        disabled={sending}
         style={{
           width: "100%",
           padding: 12,
-          background: "#3d2e20",
+          background: sending ? "#8a7a6a" : "#3d2e20",
           color: "white",
           border: "none",
           borderRadius: 8,
           fontSize: 16,
-          cursor: "pointer",
+          cursor: sending ? "wait" : "pointer",
         }}
       >
-        Send magic link
+        {sending ? "Sending…" : "Send magic link"}
       </button>
     </div>
   );
