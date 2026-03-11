@@ -201,10 +201,15 @@ export default function Home() {
   const savedItemIdRef = useRef<string | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
   const [decisionJustConfirmed, setDecisionJustConfirmed] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
   }, [previewUrl]);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     const checkSession = async () => {
@@ -566,12 +571,12 @@ export default function Home() {
             </p>
           </div>
           <div style={{ marginTop: '8px' }}>
-            {isLoggedIn === true && (
+            {mounted && isLoggedIn === true && (
               <Link href="/dashboard" style={{ fontSize: '12px', color: 'var(--ink-soft)', textDecoration: 'none', borderBottom: '1px solid var(--soft)', paddingBottom: '1px' }}>
                 My Shed
               </Link>
             )}
-            {isLoggedIn === false && (
+            {mounted && isLoggedIn === false && (
               <Link href="/login" style={{ fontSize: '12px', color: 'var(--ink-soft)', textDecoration: 'none', borderBottom: '1px solid var(--soft)', paddingBottom: '1px' }}>
                 Sign in
               </Link>
@@ -598,7 +603,7 @@ export default function Home() {
         </div>
 
         {/* Logged-out only: tagline, example pills, no-account line */}
-        {isLoggedIn === false && (
+        {mounted && isLoggedIn === false && (
           <div style={{ marginTop: '28px', textAlign: 'center' }}>
             <p style={{ fontFamily: 'var(--font-cormorant)', fontSize: '20px', fontWeight: 300, color: 'var(--ink-soft)', lineHeight: 1.4, margin: 0 }}>
               GoShed tells you what to do with it.
