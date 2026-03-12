@@ -20,7 +20,7 @@ export const ACTION_PROMPTS: Record<ActionPromptType, readonly [string, string, 
     "Tuck it into a tote. Hand it over in person if you can. A quick \"I thought of you\" beats a box in the mail. Add a note or a treat and call it done.",
   ],
   donate: [
-    "Box it or bag it tonight. Leave it by the door so it actually leaves the house. Most donation centers are open tomorrow morning.",
+    "Box it or bag it tonight. Leave it by the door so it actually leaves the house.",
     "Set it aside tonight by the door. Tomorrow morning drop it off — one less thing in the house and someone else gets to use it.",
     "Drop it off on your next errand run, or schedule a pickup. Out of sight, out of the house.",
   ],
