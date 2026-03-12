@@ -742,7 +742,10 @@ export default function Home() {
                 const doneLabel = DECISION_DONE_LABELS[chosenDecision as keyof typeof DECISION_DONE_LABELS] ?? `${displayLabel} ✓`;
                 const actionPrompt =
                   confirmedActionPromptRef.current[chosenDecision] ??
-                  (confirmedActionPromptRef.current[chosenDecision] = getRandomActionPrompt(chosenDecision as ActionPromptType));
+                  (confirmedActionPromptRef.current[chosenDecision] = getRandomActionPrompt(
+                    chosenDecision as ActionPromptType,
+                    result ? { item_label: result.item_label, description: result.description } : undefined
+                  ));
                 return (
                   <>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>

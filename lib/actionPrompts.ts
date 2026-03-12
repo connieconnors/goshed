@@ -13,12 +13,19 @@ export type ActionPromptType =
   | "curb"
   | "repurpose";
 
+/** Plate-specific gift prompt (only used when item is plate-like). */
+const GIFT_PROMPT_PLATE =
+  "Box it or bag it. Better yet, put some brownies on that plate and show up at someone's door. That's a gift they'll remember.";
+
+/** Generic gift prompts (used when item is not plate-like, or when no context is passed). */
+const GIFT_PROMPTS_GENERIC: readonly [string, string, string] = [
+  "Box it or bag it, then get it to them this week. The best gifts are the ones that show up without a holiday attached — just because you thought of them.",
+  "Wrap it and hand it over in person if you can. A quick \"I thought of you\" beats a box in the mail. Add a note and call it done.",
+  "Tuck it into a tote or wrap it simply. The thought counts — get it to them soon so they know you were thinking of them.",
+];
+
 export const ACTION_PROMPTS: Record<ActionPromptType, readonly [string, string, string]> = {
-  gift: [
-    "Box it or bag it. Better yet, put some brownies on that plate and show up at someone's door. That's a gift they'll remember.",
-    "Wrap it, then get it to them this week. The best gifts are the ones that show up without a holiday attached — just because you thought of them.",
-    "Tuck it into a tote. Hand it over in person if you can. A quick \"I thought of you\" beats a box in the mail. Add a note or a treat and call it done.",
-  ],
+  gift: GIFT_PROMPTS_GENERIC,
   donate: [
     "Box it or bag it tonight. Leave it by the door so it actually leaves the house.",
     "Set it aside tonight by the door. Tomorrow morning drop it off — one less thing in the house and someone else gets to use it.",
@@ -51,10 +58,26 @@ export const ACTION_PROMPTS: Record<ActionPromptType, readonly [string, string, 
   ],
 };
 
-/** Pick one of the three prompts at random for a given type. */
+/** True if the item sounds like a plate (plate, platter, serving dish, etc.). */
+function isPlateLike(item_label: string, description: string): boolean {
+  const text = `${item_label} ${description}`.toLowerCase();
+  return /\b(plate|platter|serving (dish|tray|bowl)|dish|charger)\b/.test(text);
+}
+
+/** Pick one of the three prompts at random for a given type. For "gift", uses item context so plate-specific copy only appears for plate-like items. */
 export function getRandomActionPrompt(
-  type: ActionPromptType
+  type: ActionPromptType,
+  context?: { item_label?: string; description?: string }
 ): string {
+  if (type === 'gift' && context) {
+    const label = context.item_label ?? '';
+    const desc = context.description ?? '';
+    if (isPlateLike(label, desc)) {
+      return GIFT_PROMPT_PLATE;
+    }
+    const index = Math.floor(Math.random() * GIFT_PROMPTS_GENERIC.length);
+    return GIFT_PROMPTS_GENERIC[index];
+  }
   const prompts = ACTION_PROMPTS[type];
   const index = Math.floor(Math.random() * prompts.length);
   return prompts[index];
