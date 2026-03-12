@@ -16,6 +16,7 @@ type ShedItem = {
   created_at: string;
 };
 
+/** Filter/summary category names (present tense). */
 const REC_LABELS: Record<string, string> = {
   sell: "Sell",
   donate: "Donate",
@@ -23,6 +24,16 @@ const REC_LABELS: Record<string, string> = {
   curb: "Curb",
   keep: "Keep",
   repurpose: "Repurpose",
+};
+
+/** Badge on each card: past tense + ✓ (single consistent style for all items). */
+const BADGE_LABELS: Record<string, string> = {
+  sell: "Sold ✓",
+  donate: "Donated ✓",
+  gift: "Gifted ✓",
+  curb: "Curbed ✓",
+  keep: "Kept ✓",
+  repurpose: "Repurposed ✓",
 };
 
 /** Button label when marking done: "Listed ✓", "Donated ✓", etc. */
@@ -246,11 +257,12 @@ export default function DashboardPage() {
                       borderRadius: "4px",
                       fontSize: "10px",
                       fontWeight: 600,
-                      background: "var(--surface)",
-                      color: "var(--ink)",
+                      border: "1px solid var(--green)",
+                      background: "transparent",
+                      color: "var(--green)",
                     }}
                   >
-                    {REC_LABELS[item.recommendation] ?? item.recommendation}
+                    {BADGE_LABELS[item.recommendation] ?? `${item.recommendation} ✓`}
                   </span>
                 </p>
                 {item.status !== "done" ? (

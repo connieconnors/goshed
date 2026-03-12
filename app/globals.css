@@ -94,8 +94,13 @@ body {
   50% { box-shadow: 0 0 0 8px rgba(94, 113, 85, 0); }
   100% { box-shadow: none; }
 }
+@keyframes goshed-confirmed-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 .goshed-decision-confirmed {
-  animation: goshed-decision-flash 0.6s ease-out;
+  animation: goshed-decision-flash 0.6s ease-out, goshed-confirmed-fade-in 0.25s ease-out;
   border-color: var(--green) !important;
   background: rgba(94, 113, 85, 0.08) !important;
 }

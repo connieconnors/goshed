@@ -43,7 +43,7 @@ const NATIONAL_PICKUP: NationalOrg[] = [
   },
   {
     id: "vva",
-    name: "Vietnam Veterans of America",
+    name: "Veterans of America",
     note: "Accepts clothing, housewares, small furniture. Free pickup.",
     url: "https://pickupplease.org",
     categories: ["clothing", "furniture", "general"],
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
     const queries = [
       `Goodwill near ${lat},${lng}`,
       `Salvation Army donation near ${lat},${lng}`,
-      `Vietnam Veterans pickup near ${lat},${lng}`,
+      `Veterans of America pickup near ${lat},${lng}`,
       `Habitat for Humanity ReStore near ${lat},${lng}`,
       `thrift store donation drop off near ${lat},${lng}`,
       `clothing donation bin near ${lat},${lng}`,

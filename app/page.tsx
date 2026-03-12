@@ -3,6 +3,7 @@
 import { useRef, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { createSupabaseBrowserClient } from '@/lib/supabase';
+import { getRandomActionPrompt, type ActionPromptType } from '@/lib/actionPrompts';
 
 type AnalyzeResult = {
   item_label: string;
@@ -17,14 +18,6 @@ type RecommendResult = {
   next_step: string;
 };
 
-type NearbyCharitiesLocal = { name: string; address: string; rating?: number; open_now: boolean | null; place_id: string };
-type NearbyCharitiesNational = { name: string; note: string; url: string };
-type NearbyCharitiesResponse = {
-  local: NearbyCharitiesLocal[];
-  national: NearbyCharitiesNational[];
-  source: string;
-  item_label?: string | null;
-};
 
 const ICON_GIFT = <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="8" width="18" height="14" rx="2"/><path d="M12 8v14M3 13h18"/><path d="M8 8c0-2.2 1.8-4 4-4s4 1.8 4 4"/></svg>;
 const ICON_DONATE = <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>;
@@ -83,12 +76,8 @@ const LOADING_PHRASES = [
   'Finding the best next life',
 ];
 
-/** Fallback national pickup list when API fails (mirrors API default). */
-const NATIONAL_PICKUP_FALLBACK: NearbyCharitiesNational[] = [
-  { name: 'Habitat for Humanity ReStore', note: 'Accepts furniture, appliances, building materials. Free pickup available.', url: 'https://www.habitat.org/restores' },
-  { name: 'Vietnam Veterans of America', note: 'Accepts clothing, housewares, small furniture. Free pickup.', url: 'https://pickupplease.org' },
-  { name: 'Salvation Army', note: 'Accepts most household items. Pickup available in many areas.', url: 'https://www.salvationarmyusa.org/usn/donate-goods' },
-];
+/** Gate for item save: only one POST per key across effect double-invokes (e.g. Strict Mode). Reset when user starts a new item. */
+let lastSavedItemKey: string | null = null;
 
 /** Derive shippable when analysis doesn't provide it: false if fragile, oversized, or full set; else true. */
 function deriveShippable(analysis: { item_label?: string; description?: string }): boolean {
@@ -193,15 +182,14 @@ export default function Home() {
   const [refinementNote, setRefinementNote] = useState('');
   const [showNoteInput, setShowNoteInput] = useState(false);
   const [refinementPhotoUrl, setRefinementPhotoUrl] = useState<string | null>(null);
-  const [nearbyCharities, setNearbyCharities] = useState<NearbyCharitiesResponse | null>(null);
-  const [nearbyCharitiesLoading, setNearbyCharitiesLoading] = useState(false);
-  const lastNearbyFetchKeyRef = useRef<string | null>(null);
   const analysisImageDataUrlRef = useRef<string | null>(null);
   const savedForItemRef = useRef<string | null>(null);
   const savedItemIdRef = useRef<string | null>(null);
+  const confirmedActionPromptRef = useRef<Record<string, string>>({});
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
   const [decisionJustConfirmed, setDecisionJustConfirmed] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [contextualPlaces, setContextualPlaces] = useState<{ name: string; distance_mi: number; place_id: string }[]>([]);
 
   useEffect(() => {
     return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
@@ -239,6 +227,32 @@ export default function Home() {
     return () => { if (refinementPhotoUrl) URL.revokeObjectURL(refinementPhotoUrl); };
   }, [refinementPhotoUrl]);
 
+  // Fetch nearby donation places when user chooses donate or gift
+  useEffect(() => {
+    if (chosenDecision !== 'donate' && chosenDecision !== 'gift') {
+      setContextualPlaces([]);
+      return;
+    }
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        fetch('/api/contextual-places', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lat, lng }),
+        })
+          .then((res) => res.json())
+          .then((data: { places?: { name: string; distance_mi: number; place_id: string }[] }) => {
+            setContextualPlaces(data.places ?? []);
+          })
+          .catch(() => setContextualPlaces([]));
+      },
+      () => setContextualPlaces([])
+    );
+  }, [chosenDecision]);
+
   useEffect(() => {
     if (!loading) return;
     const id = setInterval(() => {
@@ -246,83 +260,6 @@ export default function Home() {
     }, 1500);
     return () => clearInterval(id);
   }, [loading]);
-
-  // When donate is recommended, fetch nearby charities (with geolocation if allowed). Only once per recommendation.
-  useEffect(() => {
-    console.log('[nearby-charities] effect ran', { recommendation: recommendResult?.recommendation, item_label: result?.item_label });
-    if (!recommendResult || recommendResult.recommendation !== 'donate' || !result?.item_label) {
-      setNearbyCharities(null);
-      lastNearbyFetchKeyRef.current = null;
-      return;
-    }
-    const key = `donate-${result.item_label}`;
-    if (lastNearbyFetchKeyRef.current === key) return;
-    lastNearbyFetchKeyRef.current = key;
-
-    let cancelled = false;
-    let fetchFired = false;
-    setNearbyCharitiesLoading(true);
-    const fetchWithLocation = (lat?: number, lng?: number) => {
-      const hasCoords = lat != null && lng != null;
-      if (fetchFired && !hasCoords) return;
-      fetchFired = true; // set immediately so 10s fallback skips
-      console.log('[nearby-charities] sending lat/lng:', lat, lng);
-      fetch('/api/nearby-charities', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          lat,
-          lng,
-          item_label: result.item_label,
-        }),
-      })
-        .then((res) => res.json())
-        .then((data: NearbyCharitiesResponse) => {
-          console.log('[nearby-charities] API response:', { local: data.local, national: data.national, source: data.source });
-          if (!cancelled) {
-            setNearbyCharities(data);
-            console.log('[nearby-charities] setting state with:', data.local?.length, 'local results, source:', data.source);
-          } else {
-            console.log('[nearby-charities] skipped setState (cancelled)');
-          }
-        })
-        .catch(() => {
-          if (!cancelled && !hasCoords) {
-            setNearbyCharities({ local: [], national: NATIONAL_PICKUP_FALLBACK, source: 'national_only' });
-          }
-        })
-        .finally(() => {
-          if (!cancelled) setNearbyCharitiesLoading(false);
-        });
-    };
-    if (typeof navigator !== 'undefined' && navigator.geolocation) {
-      console.log('[nearby-charities] requesting geolocation...');
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          if (cancelled) return;
-          console.log('[nearby-charities] geolocation success', pos.coords.latitude, pos.coords.longitude);
-          fetchWithLocation(pos.coords.latitude, pos.coords.longitude);
-        },
-        (err) => {
-          console.log('[nearby-charities] geolocation error/denied', err?.code, err?.message);
-          fetchWithLocation();
-        },
-        { timeout: 8000, maximumAge: 300000 }
-      );
-      // If user never responds to permission prompt, callback may never fire. Fallback so we still call the API.
-      const fallback = setTimeout(() => {
-        if (!fetchFired && !cancelled) {
-          console.log('[nearby-charities] geolocation fallback (no response in 10s), fetching national only');
-          fetchWithLocation();
-        }
-      }, 10000);
-      return () => { cancelled = true; clearTimeout(fallback); };
-    } else {
-      console.log('[nearby-charities] no geolocation API, fetching national only');
-      fetchWithLocation();
-    }
-    return () => { cancelled = true; };
-  }, [recommendResult?.recommendation, result?.item_label]);
 
   const handleZoneClick = () => inputRef.current?.click();
 
@@ -336,9 +273,10 @@ export default function Home() {
     setRecommendResult(null);
     setRecommendError(null);
     setChosenDecision(null);
-    setNearbyCharities(null);
+    setContextualPlaces([]);
     savedForItemRef.current = null;
     savedItemIdRef.current = null;
+    lastSavedItemKey = null;
     setLoadingPhraseIndex(0);
     setRefinementNote('');
     setShowNoteInput(false);
@@ -420,11 +358,14 @@ export default function Home() {
     }
   };
 
-  // Save to Supabase when we have analysis + recommendation and user is logged in (once per item)
+  // Save to Supabase when we have analysis + recommendation and user is logged in (once per item).
+  // Key is by item_label only so changing recommendation (Other options) updates via PATCH, doesn't create a second item.
+  // lastSavedItemKey survives Strict Mode remount so we only POST once per item.
   useEffect(() => {
     if (!result || !recommendResult || isLoggedIn !== true) return;
-    const key = `${result.item_label}-${recommendResult.recommendation}`;
-    if (savedForItemRef.current === key) return;
+    const key = result.item_label;
+    if (lastSavedItemKey === key) return;
+    lastSavedItemKey = key;
     savedForItemRef.current = key;
     fetch('/api/items', {
       method: 'POST',
@@ -785,46 +726,6 @@ export default function Home() {
               })}
             </div>
 
-            {/* Where to donate: nearby + national fallback (only when recommendation is donate) */}
-            {recommendResult.recommendation === 'donate' && (
-              <div style={{ marginTop: '20px', padding: '16px', background: 'var(--white)', borderRadius: '14px', border: '1px solid var(--surface2)' }}>
-                <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ink)', marginTop: 0, marginBottom: '12px' }}>Where to donate</p>
-                {nearbyCharitiesLoading ? (
-                  <p style={{ fontSize: '13px', color: 'var(--ink-soft)', margin: 0 }}>Finding nearby options…</p>
-                ) : nearbyCharities ? (
-                  <>
-                    {nearbyCharities.local.length > 0 && (
-                      <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 12px 0' }}>
-                        {nearbyCharities.local.map((place) => (
-                          <li key={place.place_id} style={{ fontSize: '13px', color: 'var(--ink)', marginBottom: '8px', lineHeight: 1.4 }}>
-                            <a href={`https://www.google.com/maps/search/?api=1&query_place_id=${place.place_id}`} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 500, color: 'var(--accent)', textDecoration: 'none' }}>{place.name}</a>
-                            {place.address && <span style={{ color: 'var(--ink-soft)', display: 'block', marginTop: '2px' }}>{place.address}</span>}
-                            {(place.rating != null || place.open_now != null) && (
-                              <span style={{ fontSize: '12px', color: 'var(--ink-soft)' }}>
-                                {place.rating != null && ` ★ ${place.rating}`}
-                                {place.open_now === true && ' · Open now'}
-                              </span>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    <p style={{ fontSize: '12px', fontWeight: 500, color: 'var(--ink-soft)', marginTop: nearbyCharities.local.length ? 8 : 0, marginBottom: '6px' }}>National pickup</p>
-                    <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                      {nearbyCharities.national.map((org) => (
-                        <li key={org.name} style={{ fontSize: '13px', marginBottom: '12px', lineHeight: 1.4 }}>
-                          <a href={org.url} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 500, color: 'var(--accent)', textDecoration: 'none' }}>{org.name}</a>
-                          <span style={{ color: 'var(--ink-soft)', display: 'block', marginTop: '2px' }}>{org.note}</span>
-                          {/pickup/i.test(org.note) && (
-                            <a href={org.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: '12px', color: 'var(--accent)', textDecoration: 'none', display: 'inline-block', marginTop: '4px' }}>Schedule free pickup →</a>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                ) : null}
-              </div>
-            )}
           </>
         )}
 
@@ -839,6 +740,9 @@ export default function Home() {
                 const btn = ALL_DISPLAY_OPTIONS.find(b => b.id === chosenDecision);
                 const displayLabel = btn?.id === 'curb' ? 'Curb' : btn?.label;
                 const doneLabel = DECISION_DONE_LABELS[chosenDecision as keyof typeof DECISION_DONE_LABELS] ?? `${displayLabel} ✓`;
+                const actionPrompt =
+                  confirmedActionPromptRef.current[chosenDecision] ??
+                  (confirmedActionPromptRef.current[chosenDecision] = getRandomActionPrompt(chosenDecision as ActionPromptType));
                 return (
                   <>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
@@ -847,13 +751,38 @@ export default function Home() {
                         {doneLabel.replace(' ✓', '')} — good call.
                       </span>
                     </div>
-                    <p style={{ fontSize: '14px', color: 'var(--ink)', lineHeight: 1.5, marginBottom: '8px' }}>
-                      {firstSentence(recommendResult.reason)}
+                    <p style={{ fontSize: '14px', color: 'var(--ink)', lineHeight: 1.5, marginBottom: '12px' }}>
+                      {actionPrompt}
                     </p>
-                    <p style={{ fontSize: '14px', color: 'var(--green)', fontWeight: 500, lineHeight: 1.5, marginBottom: '14px' }}>
-                      {recommendResult.next_step}
-                    </p>
-                    <button onClick={() => setChosenDecision(null)}
+                    {(chosenDecision === 'donate' || chosenDecision === 'gift') && contextualPlaces.length > 0 && (
+                      <div style={{ marginBottom: '14px' }}>
+                        <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ink)', marginBottom: '8px', marginTop: 0 }}>Near you:</p>
+                        <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '14px', lineHeight: 1.6, color: 'var(--ink)' }}>
+                          {contextualPlaces.map((place) => (
+                            <li key={place.place_id} style={{ marginBottom: '4px' }}>
+                              <a
+                                href={`https://www.google.com/maps/search/?api=1&query_place_id=${encodeURIComponent(place.place_id)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{ color: 'var(--accent)', textDecoration: 'none' }}
+                              >
+                                {place.name}
+                              </a>
+                              {' '}
+                              <span style={{ color: 'var(--ink-soft)' }}>{place.distance_mi} mi</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    <Link
+                      href="/dashboard"
+                      style={{ fontSize: '13px', color: 'var(--accent)', textDecoration: 'none', display: 'inline-block', marginBottom: '14px' }}
+                    >
+                      View your Shed →
+                    </Link>
+                    <br />
+                    <button onClick={() => { setChosenDecision(null); setContextualPlaces([]); }}
                       style={{ fontSize: '13px', color: 'var(--ink-soft)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
                       ← Change my mind
                     </button>
@@ -861,47 +790,6 @@ export default function Home() {
                 );
               })()}
             </div>
-
-            {/* Where to donate: also show when user overrode to donate */}
-            {chosenDecision === 'donate' && (
-              <div style={{ marginTop: '20px', padding: '16px', background: 'var(--white)', borderRadius: '14px', border: '1px solid var(--surface2)' }}>
-                <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ink)', marginTop: 0, marginBottom: '12px' }}>Where to donate</p>
-                {nearbyCharitiesLoading ? (
-                  <p style={{ fontSize: '13px', color: 'var(--ink-soft)', margin: 0 }}>Finding nearby options…</p>
-                ) : nearbyCharities ? (
-                  <>
-                    {nearbyCharities.local.length > 0 && (
-                      <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 12px 0' }}>
-                        {nearbyCharities.local.map((place) => (
-                          <li key={place.place_id} style={{ fontSize: '13px', color: 'var(--ink)', marginBottom: '8px', lineHeight: 1.4 }}>
-                            <a href={`https://www.google.com/maps/search/?api=1&query_place_id=${place.place_id}`} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 500, color: 'var(--accent)', textDecoration: 'none' }}>{place.name}</a>
-                            {place.address && <span style={{ color: 'var(--ink-soft)', display: 'block', marginTop: '2px' }}>{place.address}</span>}
-                            {(place.rating != null || place.open_now != null) && (
-                              <span style={{ fontSize: '12px', color: 'var(--ink-soft)' }}>
-                                {place.rating != null && ` ★ ${place.rating}`}
-                                {place.open_now === true && ' · Open now'}
-                              </span>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    <p style={{ fontSize: '12px', fontWeight: 500, color: 'var(--ink-soft)', marginTop: nearbyCharities.local.length ? 8 : 0, marginBottom: '6px' }}>National pickup</p>
-                    <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                      {nearbyCharities.national.map((org) => (
-                        <li key={org.name} style={{ fontSize: '13px', marginBottom: '12px', lineHeight: 1.4 }}>
-                          <a href={org.url} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 500, color: 'var(--accent)', textDecoration: 'none' }}>{org.name}</a>
-                          <span style={{ color: 'var(--ink-soft)', display: 'block', marginTop: '2px' }}>{org.note}</span>
-                          {/pickup/i.test(org.note) && (
-                            <a href={org.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: '12px', color: 'var(--accent)', textDecoration: 'none', display: 'inline-block', marginTop: '4px' }}>Schedule free pickup →</a>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                ) : null}
-              </div>
-            )}
           </>
         )}
 

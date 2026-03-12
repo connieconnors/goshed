@@ -29,6 +29,11 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
+## Environment variables
+
+- **GOOGLE_PLACES_API_KEY** – Used for nearby donation/place suggestions and contextual suggestions on the confirmation screen. Create in [Google Cloud Console](https://console.cloud.google.com/) (Places API).
+- **OPENWEATHERMAP_API_KEY** – Optional. Used for curb/large-item confirmation to show a rain heads-up. Free tier at [OpenWeatherMap](https://openweathermap.org/api). Add to `.env.local` as `OPENWEATHERMAP_API_KEY`.
+
 ## Supabase auth (magic link) in production
 
 For magic-link sign-in to work on your live site (e.g. goshed.app):
