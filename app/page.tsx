@@ -227,9 +227,9 @@ export default function Home() {
     return () => { if (refinementPhotoUrl) URL.revokeObjectURL(refinementPhotoUrl); };
   }, [refinementPhotoUrl]);
 
-  // Fetch nearby donation places when user chooses donate or gift
+  // Fetch nearby donation places only when user chooses Donate (not Gift)
   useEffect(() => {
-    if (chosenDecision !== 'donate' && chosenDecision !== 'gift') {
+    if (chosenDecision !== 'donate') {
       setContextualPlaces([]);
       return;
     }
@@ -754,7 +754,7 @@ export default function Home() {
                     <p style={{ fontSize: '14px', color: 'var(--ink)', lineHeight: 1.5, marginBottom: '12px' }}>
                       {actionPrompt}
                     </p>
-                    {(chosenDecision === 'donate' || chosenDecision === 'gift') && contextualPlaces.length > 0 && (
+                    {chosenDecision === 'donate' && contextualPlaces.length > 0 && (
                       <div style={{ marginBottom: '14px' }}>
                         <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ink)', marginBottom: '8px', marginTop: 0 }}>Near you:</p>
                         <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '14px', lineHeight: 1.6, color: 'var(--ink)' }}>
