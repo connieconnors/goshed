@@ -13,6 +13,8 @@ export default function AccountPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteMessage, setInviteMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordLoading, setPasswordLoading] = useState(false);
@@ -36,6 +38,35 @@ export default function AccountPage() {
     await supabase.auth.signOut();
     router.replace("/");
     router.refresh();
+  };
+
+  const handleInvite = async () => {
+    const email = inviteEmail.trim().toLowerCase();
+    if (!email || !email.includes("@")) {
+      setInviteMessage({ type: "error", text: "Please enter a valid email." });
+      return;
+    }
+    setInviteMessage(null);
+    setInviteLoading(true);
+    try {
+      const res = await fetch("/api/invite", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inviteeEmail: email }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setInviteEmail("");
+        setInviteMessage({ type: "success", text: `Invite sent to ${email}` });
+      } else {
+        setInviteMessage({ type: "error", text: (data?.error as string) || "Something went wrong, please try again." });
+      }
+    } catch {
+      setInviteMessage({ type: "error", text: "Something went wrong, please try again." });
+    } finally {
+      setInviteLoading(false);
+    }
   };
 
   const handleSetPassword = async () => {
@@ -184,15 +215,18 @@ export default function AccountPage() {
             />
             <button
               type="button"
-              disabled
-              style={{ padding: "10px 16px", fontSize: "14px", fontWeight: 500, borderRadius: "8px", background: "var(--accent)", color: "var(--white)", border: "none", cursor: "not-allowed", opacity: 0.5 }}
+              onClick={handleInvite}
+              disabled={inviteLoading}
+              style={{ padding: "10px 16px", fontSize: "14px", fontWeight: 500, borderRadius: "8px", background: "var(--accent)", color: "var(--white)", border: "none", cursor: inviteLoading ? "not-allowed" : "pointer", opacity: inviteLoading ? 0.6 : 1 }}
             >
-              Invite
+              {inviteLoading ? "Sending…" : "Invite"}
             </button>
           </div>
-          <p style={{ fontSize: "12px", color: "var(--ink-soft)", marginTop: "8px" }}>
-            Family sharing coming soon.
-          </p>
+          {inviteMessage && (
+            <p style={{ fontSize: "13px", marginTop: "8px", marginBottom: 0, color: inviteMessage.type === "success" ? "var(--green)" : "#c0392b" }}>
+              {inviteMessage.text}
+            </p>
+          )}
         </section>
 
         {/* Danger zone */}

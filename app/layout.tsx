@@ -31,7 +31,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${cormorant.variable} ${sourceSerif.variable}`}>
-      <body className="antialiased" style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+      <body className="antialiased" style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }} suppressHydrationWarning>
         <Script
           src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
           strategy="afterInteractive"
@@ -44,7 +44,7 @@ export default function RootLayout({
             gtag('config', '${GA_MEASUREMENT_ID}');
           `}
         </Script>
-        <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column" }} suppressHydrationWarning>
           {children}
         </div>
         <footer
