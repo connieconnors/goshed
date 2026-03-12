@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { Cormorant_Garamond, Source_Serif_4 } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
+
+const GA_MEASUREMENT_ID = "G-CPJMZSBPRJ";
 
 const cormorant = Cormorant_Garamond({
   subsets: ["latin"],
@@ -29,6 +32,18 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${cormorant.variable} ${sourceSerif.variable}`}>
       <body className="antialiased" style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+        <Script
+          src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
+          strategy="afterInteractive"
+        />
+        <Script id="gtag-config" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', '${GA_MEASUREMENT_ID}');
+          `}
+        </Script>
         <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
           {children}
         </div>

@@ -37,7 +37,14 @@ function LoginForm() {
     setSending(false);
     if (error) {
       console.error("[login] signInWithOtp failed:", error.message, error);
-      setSendError(error.message || "Could not send magic link. Try again or check that this site is allowed in your Supabase project.");
+      const isRateLimit =
+        error.message?.toLowerCase().includes("rate limit") ||
+        (error as { status?: number }).status === 429;
+      setSendError(
+        isRateLimit
+          ? "Too many sign-in attempts. Please wait about an hour before requesting another magic link."
+          : error.message || "Could not send magic link. Try again later."
+      );
       return;
     }
     setSent(true);
@@ -75,9 +82,16 @@ function LoginForm() {
         </p>
       )}
       {sendError && (
-        <p style={{ color: "#c00", fontSize: 14, marginBottom: 12 }}>
-          {sendError}
-        </p>
+        <div style={{ marginBottom: 12 }}>
+          <p style={{ color: "#c00", fontSize: 14 }}>
+            {sendError}
+          </p>
+          {sendError.includes("wait about an hour") && (
+            <p style={{ color: "#666", fontSize: 13, marginTop: 8 }}>
+              If you already have a magic link from us, use that to sign in.
+            </p>
+          )}
+        </div>
       )}
       <p style={{ color: "#888", fontSize: 14 }}>
         We'll email you a magic link.
