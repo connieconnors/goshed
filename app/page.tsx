@@ -2,6 +2,7 @@
 
 import { useRef, useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@/lib/supabase';
 import { getRandomActionPrompt, type ActionPromptType } from '@/lib/actionPrompts';
 
@@ -168,6 +169,7 @@ function getDecisionTitle(id: RecommendResult['recommendation']): string {
 }
 
 export default function Home() {
+  const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const refinementPhotoRef = useRef<HTMLInputElement>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -200,16 +202,34 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const checkSession = async () => {
-      const res = await fetch("/api/auth/session", { credentials: "include" });
+    const justSignedIn = typeof window !== "undefined" && window.location.search.includes("signed_in=1");
+
+    const checkSession = async (): Promise<boolean> => {
+      const res = await fetch("/api/auth/session", { credentials: "include", cache: "no-store" });
       const { user } = await res.json().catch(() => ({ user: null }));
       setIsLoggedIn(!!user);
+      return !!user;
     };
-    checkSession();
+
+    const run = async () => {
+      const loggedIn = await checkSession();
+      if (justSignedIn) {
+        if (loggedIn) {
+          router.replace("/", { scroll: false });
+        } else {
+          setTimeout(async () => {
+            await checkSession();
+            router.replace("/", { scroll: false });
+          }, 300);
+        }
+      }
+    };
+
+    run();
     const supabase = createSupabaseBrowserClient();
     const { data: { subscription } } = supabase.auth.onAuthStateChange(() => checkSession());
     return () => subscription.unsubscribe();
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     const redirect = typeof sessionStorage !== "undefined" ? sessionStorage.getItem("redirect_after_login") : null;
