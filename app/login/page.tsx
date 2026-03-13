@@ -15,6 +15,7 @@ function LoginForm() {
   const [sent, setSent] = useState(false);
   const [authError, setAuthError] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [invalidPasswordRecovery, setInvalidPasswordRecovery] = useState(false);
   const [sending, setSending] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
@@ -70,9 +71,38 @@ function LoginForm() {
     router.refresh();
   };
 
+  const handleSendLinkInstead = async () => {
+    if (typeof window === "undefined" || !email?.includes("@")) return;
+    setSendError(null);
+    setInvalidPasswordRecovery(false);
+    setSending(true);
+    const redirect = searchParams.get("redirect");
+    if (redirect) sessionStorage.setItem("redirect_after_login", redirect);
+    const supabase = createSupabaseBrowserClient();
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+    });
+    setSending(false);
+    if (!error && email) localStorage.setItem(LAST_LOGIN_EMAIL_KEY, email);
+    if (error) {
+      const isRateLimit =
+        error.message?.toLowerCase().includes("rate limit") ||
+        (error as { status?: number }).status === 429;
+      setSendError(
+        isRateLimit
+          ? "Too many sign-in attempts. Please wait about an hour, or try your password again."
+          : error.message || "Could not send link. Try again."
+      );
+      return;
+    }
+    setSent(true);
+  };
+
   const handleSubmit = async () => {
     if (typeof window === "undefined" || !email?.includes("@")) return;
     setSendError(null);
+    setInvalidPasswordRecovery(false);
     setSending(true);
     const redirect = searchParams.get("redirect");
     if (redirect) sessionStorage.setItem("redirect_after_login", redirect);
@@ -82,9 +112,18 @@ function LoginForm() {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       setSending(false);
       if (error) {
-        setSendError(error.message || "Invalid email or password.");
+        const isInvalidCreds =
+          error.message?.toLowerCase().includes("invalid login credentials") ||
+          error.message?.toLowerCase().includes("invalid credentials");
+        if (isInvalidCreds) {
+          setInvalidPasswordRecovery(true);
+          setSendError(null);
+        } else {
+          setSendError(error.message || "Invalid email or password.");
+        }
         return;
       }
+      setInvalidPasswordRecovery(false);
       if (email) localStorage.setItem(LAST_LOGIN_EMAIL_KEY, email);
       redirectAfterLogin();
       return;
@@ -148,6 +187,31 @@ function LoginForm() {
           Sign-in link expired or invalid. Request a new magic link below.
         </p>
       )}
+      {invalidPasswordRecovery && (
+        <div style={{ marginBottom: 12, padding: 12, background: "#fff8f0", borderRadius: 8, border: "1px solid #e8d5c4" }}>
+          <p style={{ color: "#8a5a2d", fontSize: 14, margin: 0 }}>
+            Wrong password — or forgot it? We&apos;ll email you a sign-in link.
+          </p>
+          <button
+            type="button"
+            onClick={handleSendLinkInstead}
+            disabled={sending}
+            style={{
+              marginTop: 8,
+              background: "none",
+              border: "none",
+              padding: 0,
+              color: "#3d2e20",
+              textDecoration: "underline",
+              cursor: sending ? "wait" : "pointer",
+              fontSize: 14,
+              fontFamily: "inherit",
+            }}
+          >
+            {sending ? "Sending…" : "Send link instead"}
+          </button>
+        </div>
+      )}
       {sendError && (
         <p style={{ color: "#c00", fontSize: 14, marginBottom: 12 }}>
           {sendError}
@@ -159,7 +223,10 @@ function LoginForm() {
       <input
         type="email"
         value={email}
-        onChange={(e) => setEmail(e.target.value)}
+        onChange={(e) => {
+          setEmail(e.target.value);
+          setInvalidPasswordRecovery(false);
+        }}
         placeholder="your@email.com"
         autoComplete="email"
         style={{
@@ -175,7 +242,10 @@ function LoginForm() {
       <input
         type="password"
         value={password}
-        onChange={(e) => setPassword(e.target.value)}
+        onChange={(e) => {
+          setPassword(e.target.value);
+          setInvalidPasswordRecovery(false);
+        }}
         placeholder="Password (optional)"
         autoComplete="current-password"
         style={{
