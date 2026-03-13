@@ -174,7 +174,7 @@ function LoginForm() {
         </div>
       )}
       <p style={{ color: "#888", fontSize: 14, marginBottom: 12 }}>
-        {showPasswordField ? "Sign in with your password, or send a magic link." : "We'll email you a magic link."}
+        {showPasswordField ? "Sign in with your password." : "We'll email you a magic link."}
       </p>
       <input
         type="email"
@@ -192,26 +192,24 @@ function LoginForm() {
           boxSizing: "border-box",
         }}
       />
-      {showPasswordField && (
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Password"
-          autoComplete="current-password"
-          style={{
-            width: "100%",
-            padding: 12,
-            fontSize: 16,
-            borderRadius: 8,
-            border: "1px solid #ddd",
-            marginBottom: 12,
-            boxSizing: "border-box",
-          }}
-        />
-      )}
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {showPasswordField && (
+      {showPasswordField ? (
+        <>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Password"
+            autoComplete="current-password"
+            style={{
+              width: "100%",
+              padding: 12,
+              fontSize: 16,
+              borderRadius: 8,
+              border: "1px solid #ddd",
+              marginBottom: 12,
+              boxSizing: "border-box",
+            }}
+          />
           <button
             type="button"
             onClick={handlePasswordSignIn}
@@ -225,11 +223,32 @@ function LoginForm() {
               borderRadius: 8,
               fontSize: 16,
               cursor: sending ? "wait" : "pointer",
+              marginBottom: 12,
             }}
           >
             {sending ? "Signing in…" : "Sign in"}
           </button>
-        )}
+          <p style={{ margin: 0, fontSize: 14 }}>
+            <button
+              type="button"
+              onClick={handleMagicLink}
+              disabled={sending}
+              style={{
+                background: "none",
+                border: "none",
+                padding: 0,
+                color: "#666",
+                textDecoration: "underline",
+                cursor: sending ? "wait" : "pointer",
+                fontSize: "inherit",
+                fontFamily: "inherit",
+              }}
+            >
+              {sending ? "Sending…" : "Forgot password? Send magic link"}
+            </button>
+          </p>
+        </>
+      ) : (
         <button
           type="button"
           onClick={handleMagicLink}
@@ -237,17 +256,17 @@ function LoginForm() {
           style={{
             width: "100%",
             padding: 12,
-            background: showPasswordField ? "transparent" : sending ? "#8a7a6a" : "#3d2e20",
-            color: showPasswordField ? "#3d2e20" : "white",
-            border: showPasswordField ? "1px solid #ddd" : "none",
+            background: sending ? "#8a7a6a" : "#3d2e20",
+            color: "white",
+            border: "none",
             borderRadius: 8,
             fontSize: 16,
             cursor: sending ? "wait" : "pointer",
           }}
         >
-          {sending && !showPasswordField ? "Sending…" : "Send magic link"}
+          {sending ? "Sending…" : "Send magic link"}
         </button>
-      </div>
+      )}
     </div>
   );
 }
