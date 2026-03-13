@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import type { AuthResponse } from "@supabase/supabase-js";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
 import { getEmailsWithPassword } from "@/lib/authPasswordHint";
 
@@ -30,7 +31,8 @@ function LoginForm() {
     if (!mounted || typeof window === "undefined") return;
     let cancelled = false;
     const supabase = createSupabaseBrowserClient();
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then((result: AuthResponse) => {
+      const session = result.data.session;
       if (cancelled) return;
       if (session) {
         const stored = sessionStorage.getItem("redirect_after_login");
@@ -250,9 +252,16 @@ function LoginForm() {
   );
 }
 
+// Match LoginForm's initial "Checking session…" UI to avoid hydration mismatch (React #418)
+const loginFallback = (
+  <div style={{ padding: 40, textAlign: "center", fontFamily: "sans-serif" }}>
+    <p style={{ color: "#666", fontSize: 16 }}>Checking session…</p>
+  </div>
+);
+
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontFamily: "sans-serif" }}>Loading…</div>}>
+    <Suspense fallback={loginFallback}>
       <LoginForm />
     </Suspense>
   );
