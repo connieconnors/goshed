@@ -87,7 +87,10 @@ export default function AccountPage() {
         setPasswordMessage({ type: "error", text: error.message });
         return;
       }
-      if (user?.email) addEmailWithPassword(user.email);
+      if (user?.email) {
+        addEmailWithPassword(user.email);
+        await fetch("/api/auth/password-set", { method: "POST", credentials: "include" });
+      }
       setNewPassword("");
       setConfirmPassword("");
       setPasswordMessage({ type: "success", text: "Password set. You can sign in with it next time." });

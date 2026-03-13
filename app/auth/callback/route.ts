@@ -2,11 +2,19 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
+/** Allow only same-origin paths (no open redirect). */
+function safeRedirectPath(next: string | null): string {
+  if (!next || typeof next !== "string") return "/";
+  const path = next.startsWith("/") ? next : `/${next}`;
+  if (path.startsWith("//") || path.includes("\\")) return "/";
+  return path;
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const { searchParams } = url;
   const code = searchParams.get("code");
-  // Use canonical app URL in production so redirect always goes to the right place (avoids proxy/host issues).
+  const nextParam = searchParams.get("next");
   const origin = process.env.NEXT_PUBLIC_APP_URL?.trim() || url.origin;
 
   const hasCode = code != null && code !== "";
@@ -54,5 +62,7 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.redirect(`${origin}/?signed_in=1`);
+  const path = safeRedirectPath(nextParam);
+  const sep = path.includes("?") ? "&" : "?";
+  return NextResponse.redirect(`${origin}${path}${sep}signed_in=1`);
 }
