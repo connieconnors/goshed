@@ -17,12 +17,38 @@ function LoginForm() {
   const [sendError, setSendError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const emailsWithPassword = mounted && typeof window !== "undefined" ? getEmailsWithPassword() : [];
   const showPasswordField = email.includes("@") && emailsWithPassword.includes(email.toLowerCase());
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Check for existing session (cookie-based) before showing form — don't show login if already signed in
+  useEffect(() => {
+    if (!mounted || typeof window === "undefined") return;
+    let cancelled = false;
+    const supabase = createSupabaseBrowserClient();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (cancelled) return;
+      if (session) {
+        const stored = sessionStorage.getItem("redirect_after_login");
+        if (stored) {
+          sessionStorage.removeItem("redirect_after_login");
+          router.replace(stored);
+        } else {
+          router.replace("/");
+        }
+        router.refresh();
+      } else {
+        setCheckingSession(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [mounted, router]);
 
   useEffect(() => {
     if (!mounted || typeof window === "undefined") return;
@@ -92,6 +118,13 @@ function LoginForm() {
     redirectAfterLogin();
   };
 
+  if (checkingSession)
+    return (
+      <div style={{ padding: 40, textAlign: "center", fontFamily: "sans-serif" }}>
+        <p style={{ color: "#666", fontSize: 16 }}>Checking session…</p>
+      </div>
+    );
+
   if (sent)
     return (
       <div style={{ padding: 40, textAlign: "center", fontFamily: "sans-serif" }}>
@@ -104,6 +137,9 @@ function LoginForm() {
         </p>
         <p style={{ color: "#888", fontSize: 14, marginTop: 16 }}>
           Check your spam folder if you don&apos;t see it within a minute. Only one magic link is valid at a time — wait 60 seconds before requesting another.
+        </p>
+        <p style={{ color: "#666", fontSize: 13, marginTop: 20 }}>
+          On your phone? Open the link in your regular browser (Safari or Chrome), not inside your email app — that way you stay signed in.
         </p>
       </div>
     );
@@ -130,7 +166,7 @@ function LoginForm() {
           </p>
           {sendError.includes("wait about an hour") && (
             <p style={{ color: "#666", fontSize: 13, marginTop: 8 }}>
-              If you already have a magic link from us, use that to sign in.
+              If you already have a magic link from us, use that to sign in. If you set a password on your account, you can sign in with it above instead.
             </p>
           )}
         </div>

@@ -32,9 +32,9 @@ export const ACTION_PROMPTS: Record<ActionPromptType, readonly [string, string, 
     "Drop it off on your next errand run, or schedule a pickup. Out of sight, out of the house.",
   ],
   sell: [
-    "Snap three photos in good light right now. Price it a little lower than you think and it'll be gone by the weekend.",
-    "Photos first, then list it. Good light, clean background. Price to move and it'll sell; sit on the number and it'll sit on the shelf.",
-    "List it today with clear photos and a fair price. The sooner it's up, the sooner it's sold. You've already decided — now just post it.",
+    "List it on Facebook Marketplace or Nextdoor — good photos, clean background, price to move. Local buyers for this kind of thing are usually quick.",
+    "Post on Craigslist or FB Marketplace. Snap a few shots in good light and set a fair price; sit on the number and it'll sit on the shelf.",
+    "Get it up on FB Marketplace, Craigslist, or Nextdoor today. Clear photos and a fair price; you've already decided — now just post it.",
   ],
   keep: [
     "Now you know it's a keeper. Give it a spot that does it justice — not a junk drawer.",

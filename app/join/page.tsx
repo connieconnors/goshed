@@ -53,11 +53,13 @@ function JoinContent() {
     }
     let cancelled = false;
     fetch(`/api/invite/accept?token=${encodeURIComponent(token)}`, { credentials: "include" })
-      .then((res) => {
+      .then(async (res) => {
         if (cancelled) return null;
         if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          const msg = typeof body?.error === "string" ? body.error : null;
           if (res.status === 404) setError("This invite link is invalid or has already been used.");
-          else setError("Something went wrong.");
+          else setError(msg || "Something went wrong.");
           return null;
         }
         return res.json();
@@ -91,7 +93,7 @@ function JoinContent() {
     return (
       <main style={{ minHeight: "100vh", background: "var(--bg)", padding: "48px 24px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "16px" }}>
         <p style={{ color: "var(--ink-soft)", textAlign: "center" }}>{error}</p>
-        <Link href="https://goshed.app" style={{ fontSize: "14px", color: "var(--accent)", textDecoration: "none" }}>
+        <Link href="/" style={{ fontSize: "14px", color: "var(--accent)", textDecoration: "none" }}>
           Go to GoShed →
         </Link>
       </main>

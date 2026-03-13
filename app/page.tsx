@@ -212,16 +212,22 @@ export default function Home() {
     };
 
     const run = async () => {
-      const loggedIn = await checkSession();
+      let loggedIn = await checkSession();
       if (justSignedIn) {
         if (loggedIn) {
           router.replace("/", { scroll: false });
-        } else {
-          setTimeout(async () => {
-            await checkSession();
-            router.replace("/", { scroll: false });
-          }, 300);
+          return;
         }
+        // Mobile/slow clients: cookies may not be available on first request; retry with backoff.
+        for (const delay of [300, 1000]) {
+          await new Promise((r) => setTimeout(r, delay));
+          loggedIn = await checkSession();
+          if (loggedIn) {
+            router.replace("/", { scroll: false });
+            return;
+          }
+        }
+        router.replace("/", { scroll: false });
       }
     };
 
@@ -261,7 +267,7 @@ export default function Home() {
         fetch('/api/contextual-places', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lat, lng }),
+          body: JSON.stringify({ lat, lng, item_label: result?.item_label }),
         })
           .then((res) => res.json())
           .then((data: { places?: { name: string; distance_mi: number; place_id: string }[] }) => {
@@ -271,7 +277,7 @@ export default function Home() {
       },
       () => setContextualPlaces([])
     );
-  }, [chosenDecision]);
+  }, [chosenDecision, result?.item_label]);
 
   useEffect(() => {
     if (!loading) return;
@@ -297,6 +303,7 @@ export default function Home() {
     savedForItemRef.current = null;
     savedItemIdRef.current = null;
     lastSavedItemKey = null;
+    confirmedActionPromptRef.current = {};
     setLoadingPhraseIndex(0);
     setRefinementNote('');
     setShowNoteInput(false);

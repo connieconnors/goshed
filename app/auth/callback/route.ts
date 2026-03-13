@@ -3,8 +3,11 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
+  const url = new URL(request.url);
+  const { searchParams } = url;
   const code = searchParams.get("code");
+  // Use canonical app URL in production so redirect always goes to the right place (avoids proxy/host issues).
+  const origin = process.env.NEXT_PUBLIC_APP_URL?.trim() || url.origin;
 
   const hasCode = code != null && code !== "";
   console.error("[auth/callback] URL code param present:", hasCode, {
@@ -24,9 +27,15 @@ export async function GET(request: Request) {
             return cookieStore.getAll();
           },
           setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            );
+            const isProduction = process.env.NODE_ENV === "production";
+            cookiesToSet.forEach(({ name, value, options }) => {
+              const opts = {
+                path: "/",
+                ...options,
+                ...(isProduction && { secure: true, sameSite: "lax" as const }),
+              };
+              cookieStore.set(name, value, opts);
+            });
           },
         },
       }

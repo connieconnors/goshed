@@ -18,61 +18,90 @@ function haversineKm(
   return R * c;
 }
 
-/** Search: "thrift donation", 20km radius, no place type filter. Returns top 5 by distance with name, distance_mi, place_id for Maps link. */
+/** True if item sounds like fabric/bedding (used sheets, pillows, towels, blankets) for Places search. */
+function isFabricBedding(itemLabel: string | undefined): boolean {
+  if (!itemLabel?.trim()) return false;
+  const t = itemLabel.toLowerCase();
+  return (
+    /\b(sheet|pillowcase|pillow|blanket|towel|towels|fabric|bedding|linen)\b/.test(t) ||
+    /\b(comforter|quilt|spread|rag|scraps)\b/.test(t)
+  );
+}
+
+type PlaceHit = { name: string; place_id: string; distance_mi: number };
+
+async function fetchPlaces(
+  apiKey: string,
+  query: string,
+  lat: number,
+  lng: number
+): Promise<PlaceHit[]> {
+  const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&location=${lat},${lng}&radius=20000&key=${apiKey}`;
+  const res = await fetch(url);
+  const data = (await res.json()) as {
+    status: string;
+    results?: Array<{
+      name: string;
+      place_id: string;
+      geometry?: { location: { lat: number; lng: number } };
+    }>;
+  };
+  if (data.status !== "OK" || !data.results?.length) return [];
+  return data.results.map((place) => {
+    const loc = place.geometry?.location;
+    const distance_km = loc != null ? haversineKm(lat, lng, loc.lat, loc.lng) : 0;
+    const distance_mi = Math.round(distance_km * 0.621371 * 10) / 10;
+    return { name: place.name, place_id: place.place_id, distance_mi };
+  });
+}
+
+/** Search: thrift donation (or for fabric/bedding: donation/clothing bins + animal rescue). 20km radius. Returns top 5–8 by distance. */
 export async function POST(request: NextRequest) {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ places: [] });
   }
 
-  let body: { lat?: number; lng?: number };
+  let body: { lat?: number; lng?: number; item_label?: string };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ places: [] });
   }
 
-  const { lat, lng } = body;
+  const { lat, lng, item_label } = body;
   if (lat == null || lng == null) {
     return NextResponse.json({ places: [] });
   }
 
-  const searchQuery = `thrift donation near ${lat},${lng}`;
-
   try {
-    const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(searchQuery)}&location=${lat},${lng}&radius=20000&key=${apiKey}`;
-    const res = await fetch(url);
-    const data = (await res.json()) as {
-      status: string;
-      results?: Array<{
-        name: string;
-        vicinity?: string;
-        formatted_address?: string;
-        place_id: string;
-        geometry?: { location: { lat: number; lng: number } };
-      }>;
-    };
+    const fabric = isFabricBedding(item_label);
 
-    if (data.status !== "OK" || !data.results?.length) {
-      return NextResponse.json({ places: [] });
+    if (fabric) {
+      // Consumer-facing donation bins (not B2B textile recyclers). Animal rescue/shelters for bedding and towels.
+      const [binResults, rescueResults] = await Promise.all([
+        Promise.all([
+          fetchPlaces(apiKey, `clothing donation bin near ${lat},${lng}`, lat, lng),
+          fetchPlaces(apiKey, `donation bin near ${lat},${lng}`, lat, lng),
+        ]).then(([a, b]) => [...a, ...b]),
+        Promise.all([
+          fetchPlaces(apiKey, `animal rescue near ${lat},${lng}`, lat, lng),
+          fetchPlaces(apiKey, `animal shelter near ${lat},${lng}`, lat, lng),
+        ]).then(([a, b]) => [...a, ...b]),
+      ]);
+      const byId = new Map<string, PlaceHit>();
+      [...binResults, ...rescueResults].forEach((p) => {
+        if (!byId.has(p.place_id)) byId.set(p.place_id, p);
+      });
+      const places = [...byId.values()]
+        .sort((a, b) => a.distance_mi - b.distance_mi)
+        .slice(0, 8);
+      return NextResponse.json({ places });
     }
 
-    const withDistance = data.results.map((place) => {
-      const loc = place.geometry?.location;
-      const distance_km =
-        loc != null ? haversineKm(lat, lng, loc.lat, loc.lng) : 0;
-      const distance_mi = Math.round(distance_km * 0.621371 * 10) / 10;
-      return {
-        name: place.name,
-        distance_mi,
-        place_id: place.place_id,
-      };
-    });
-    const places = withDistance
-      .sort((a, b) => a.distance_mi - b.distance_mi)
-      .slice(0, 5);
-
-    return NextResponse.json({ places });
+    const searchQuery = `thrift donation near ${lat},${lng}`;
+    const places = await fetchPlaces(apiKey, searchQuery, lat, lng);
+    return NextResponse.json({ places: places.slice(0, 5) });
   } catch {
     return NextResponse.json({ places: [] });
   }

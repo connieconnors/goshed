@@ -135,10 +135,10 @@ export async function POST(request: NextRequest) {
   }
 
   const systemPrompt = `You are an expert at identifying household and personal items for the GoShed app. Analyze the image and respond with a valid JSON object only (no markdown, no extra text) with exactly these keys:
-- item_label: a short label for the item (e.g. "Vintage ceramic vase", "Hardcover novel")
+- item_label: a short label for the main item(s) clearly visible (e.g. "Vintage ceramic vase", "Hardcover novel"). Do not try to name or interpret partly obscured items in a stack — label what's in focus; the user can add another photo for other pieces.
 - value_range: estimated resale value in USD, e.g. "$5–15" or "$0 (no resale value)"
 - shippable: false for ANY of these: lamps, lighting fixtures, furniture, mirrors, large framed art, rugs, bedding, mattresses, appliances, large ceramics, glassware, sculptures, oversized or fragile items. true only for items that are small, sturdy, and under approximately 5 lbs — like books, clothing, small collectibles, jewelry, electronics, small tools. When in doubt, return false.
-- description: 1–2 sentences. Identify brand/manufacturer if visible; if uncertain, note comparable brands or styles.
+- description: 1–2 sentences. Identify brand/manufacturer if visible; if uncertain, note comparable brands or styles. Describe only what is clearly visible. Do not infer or speculate about partially obscured items or what is "behind" something in a stack — if something is partly visible, say so briefly without guessing; it is up to the user to add a better photo or note if they want to highlight specific pieces.
 - best_next_life: one of exactly these values: "Sell", "Donate", "Gift", "Repurpose", "Curb", "Keep"
 - best_next_life_reason: 1–2 sentences explaining the recommendation in a warm, practical tone.
 
