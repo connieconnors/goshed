@@ -1,10 +1,11 @@
 'use client';
 
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@/lib/supabase';
 import { getRandomActionPrompt, type ActionPromptType } from '@/lib/actionPrompts';
+import { PaywallModal } from '@/app/components/PaywallModal';
 
 type AnalyzeResult = {
   item_label: string;
@@ -192,6 +193,9 @@ export default function Home() {
   const [decisionJustConfirmed, setDecisionJustConfirmed] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [contextualPlaces, setContextualPlaces] = useState<{ name: string; distance_mi: number; place_id: string }[]>([]);
+  const [rainNext24h, setRainNext24h] = useState<boolean | null>(null);
+  const [showPaywallModal, setShowPaywallModal] = useState(false);
+  const [paywallItemCount, setPaywallItemCount] = useState(20);
 
   useEffect(() => {
     return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
@@ -279,6 +283,26 @@ export default function Home() {
     );
   }, [chosenDecision, result?.item_label]);
 
+  // Fetch weather for curb — rain in next 24h so they know whether to put it out today
+  useEffect(() => {
+    if (chosenDecision !== 'curb') {
+      setRainNext24h(null);
+      return;
+    }
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        fetch(`/api/weather-forecast?lat=${lat}&lon=${lng}`)
+          .then((res) => res.json())
+          .then((data: { rain_next_24h?: boolean }) => setRainNext24h(!!data.rain_next_24h))
+          .catch(() => setRainNext24h(null));
+      },
+      () => setRainNext24h(null)
+    );
+  }, [chosenDecision]);
+
   useEffect(() => {
     if (!loading) return;
     const id = setInterval(() => {
@@ -289,42 +313,36 @@ export default function Home() {
 
   const handleZoneClick = () => inputRef.current?.click();
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setPreviewUrl(URL.createObjectURL(file));
-    setResult(null);
+  /** Run analyze + recommend with an existing data URL (e.g. after paywall success). */
+  const runAnalyzeWithDataUrl = useCallback(async (dataUrl: string) => {
     setError(null);
-    setRecommendResult(null);
     setRecommendError(null);
-    setChosenDecision(null);
-    setContextualPlaces([]);
-    savedForItemRef.current = null;
-    savedItemIdRef.current = null;
-    lastSavedItemKey = null;
-    confirmedActionPromptRef.current = {};
-    setLoadingPhraseIndex(0);
-    setRefinementNote('');
-    setShowNoteInput(false);
-    if (refinementPhotoUrl) URL.revokeObjectURL(refinementPhotoUrl);
-    setRefinementPhotoUrl(null);
     setLoading(true);
 
     try {
-      const dataUrl = await resizeAndToDataUrl(file);
-      analysisImageDataUrlRef.current = dataUrl;
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ image: dataUrl }),
+        credentials: 'include',
       });
       const raw = await res.text();
-      let data: { error?: string; details?: string } & AnalyzeResult;
+      let data: { error?: string; details?: string; itemCount?: number } & AnalyzeResult;
       try {
         data = raw ? JSON.parse(raw) : {};
       } catch {
         setError('We couldn\'t analyze this image. Try again or use a different photo.');
+        return;
+      }
+      if (res.status === 401) {
+        setLoading(false);
+        setError('Sign in to analyze this photo.');
+        return;
+      }
+      if (res.status === 402) {
+        setPaywallItemCount(typeof data.itemCount === 'number' ? data.itemCount : 20);
+        setShowPaywallModal(true);
+        setLoading(false);
         return;
       }
       if (!res.ok) {
@@ -383,7 +401,46 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
+  }, [refinementNote]);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(URL.createObjectURL(file));
+    setResult(null);
+    setError(null);
+    setRecommendResult(null);
+    setRecommendError(null);
+    setChosenDecision(null);
+    setContextualPlaces([]);
+    savedForItemRef.current = null;
+    savedItemIdRef.current = null;
+    lastSavedItemKey = null;
+    confirmedActionPromptRef.current = {};
+    setLoadingPhraseIndex(0);
+    setRefinementNote('');
+    setShowNoteInput(false);
+    if (refinementPhotoUrl) URL.revokeObjectURL(refinementPhotoUrl);
+    setRefinementPhotoUrl(null);
+    setLoading(true);
+
+    try {
+      const dataUrl = await resizeAndToDataUrl(file);
+      analysisImageDataUrlRef.current = dataUrl;
+      await runAnalyzeWithDataUrl(dataUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong');
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const handlePaywallSuccess = useCallback(() => {
+    setShowPaywallModal(false);
+    const dataUrl = analysisImageDataUrlRef.current;
+    if (dataUrl) runAnalyzeWithDataUrl(dataUrl);
+  }, [runAnalyzeWithDataUrl]);
 
   // Save to Supabase when we have analysis + recommendation and user is logged in (once per item).
   // Key is by item_label only so changing recommendation (Other options) updates via PATCH, doesn't create a second item.
@@ -784,6 +841,13 @@ export default function Home() {
                     <p style={{ fontSize: '14px', color: 'var(--ink)', lineHeight: 1.5, marginBottom: '12px' }}>
                       {actionPrompt}
                     </p>
+                    {chosenDecision === 'curb' && rainNext24h !== null && (
+                      <p style={{ fontSize: '13px', color: rainNext24h ? 'var(--ink)' : 'var(--ink-soft)', lineHeight: 1.5, marginBottom: '12px', fontStyle: rainNext24h ? 'normal' : undefined }}>
+                        {rainNext24h
+                          ? 'Rain expected in the next 24 hours — consider waiting to put it out.'
+                          : 'No rain expected — good day to put it out.'}
+                      </p>
+                    )}
                     {chosenDecision === 'donate' && contextualPlaces.length > 0 && (
                       <div style={{ marginBottom: '14px' }}>
                         <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ink)', marginBottom: '8px', marginTop: 0 }}>Near you:</p>
@@ -812,7 +876,7 @@ export default function Home() {
                       View your Shed →
                     </Link>
                     <br />
-                    <button onClick={() => { setChosenDecision(null); setContextualPlaces([]); }}
+                    <button onClick={() => { setChosenDecision(null); setContextualPlaces([]); setRainNext24h(null); }}
                       style={{ fontSize: '13px', color: 'var(--ink-soft)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
                       ← Change my mind
                     </button>
@@ -835,6 +899,13 @@ export default function Home() {
         )}
 
       </div>
+
+      <PaywallModal
+        open={showPaywallModal}
+        onClose={() => setShowPaywallModal(false)}
+        onPurchaseSuccess={handlePaywallSuccess}
+        itemCount={paywallItemCount}
+      />
     </main>
   );
 }

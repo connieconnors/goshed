@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { hasProEntitlement } from "@/lib/revenuecat";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
+const PAYWALL_ITEM_LIMIT = 20;
 
 type AnalyzeResult = {
   item_label: string;
@@ -65,6 +68,27 @@ export async function POST(request: NextRequest) {
       { error: "ANTHROPIC_API_KEY is not configured" },
       { status: 500 }
     );
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { count, error: countError } = await supabase
+    .from("items")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id);
+
+  if (!countError && count !== null && count >= PAYWALL_ITEM_LIMIT) {
+    const isPro = await hasProEntitlement(user.id);
+    if (!isPro) {
+      return NextResponse.json(
+        { error: "paywall", itemCount: PAYWALL_ITEM_LIMIT },
+        { status: 402 }
+      );
+    }
   }
 
   let body: { image?: string };
