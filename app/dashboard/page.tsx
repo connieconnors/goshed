@@ -117,6 +117,8 @@ export default function DashboardPage() {
           overflow: hidden;
           display: flex;
           flex-direction: column;
+          cursor: pointer;
+          color: inherit;
         }
         .dashboard-card-label {
           white-space: nowrap;
@@ -207,21 +209,27 @@ export default function DashboardPage() {
 
         <div className="dashboard-grid">
           {filteredItems.map((item) => (
-            <div key={item.id} className="dashboard-card">
+            <Link
+              key={item.id}
+              href={`/item/${item.id}`}
+              style={{ textDecoration: "none", display: "flex", flexDirection: "column", color: "inherit", cursor: "pointer" }}
+              className="dashboard-card"
+            >
               <div style={{ height: "120px", background: "var(--surface)", flexShrink: 0 }}>
                 {item.photo_url ? (
                   <img
                     src={item.photo_url}
                     alt=""
-                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    draggable={false}
+                    style={{ width: "100%", height: "100%", objectFit: "cover", pointerEvents: "none" }}
                   />
                 ) : (
-                  <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink-soft)", fontSize: "11px" }}>
+                  <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink-soft)", fontSize: "11px", pointerEvents: "none" }}>
                     No image
                   </div>
                 )}
               </div>
-              <div style={{ padding: "6px 8px 8px", flex: 1, minWidth: 0 }}>
+              <div style={{ padding: "6px 8px 8px", flex: 1, minWidth: 0, pointerEvents: "none" }}>
                 <p className="dashboard-card-label" style={{ fontSize: "13px", fontWeight: 600, color: "var(--ink)", margin: 0, lineHeight: 1.25 }}>
                   {item.item_label}
                 </p>
@@ -244,7 +252,7 @@ export default function DashboardPage() {
                   </span>
                 </p>
               </div>
-            </div>
+            </Link>
           ))}
         </div>
 
