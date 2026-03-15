@@ -159,7 +159,7 @@ export default function PrivacyPage() {
           <h2 style={h2Style}>11. Contact Us</h2>
           <p style={pStyle}>If you have any questions about this Privacy Policy or our data practices, please contact us at:</p>
           <p style={pStyle}>ThriftShopper Inc. / GoShed</p>
-          <p style={pStyleLast}>Email: <a href="mailto:support@thriftshopper.com" style={{ color: "var(--accent)", textDecoration: "none" }}>support@thriftshopper.com</a></p>
+          <p style={pStyleLast}>Email: <a href="mailto:support@goshed.app" style={{ color: "var(--accent)", textDecoration: "none" }}>support@thriftshopper.com</a></p>
         </section>
       </div>
     </main>

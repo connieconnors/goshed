@@ -19,6 +19,8 @@ export default function AccountPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [restoreLoading, setRestoreLoading] = useState(false);
+  const [restoreMessage, setRestoreMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,6 +98,21 @@ export default function AccountPage() {
       setPasswordMessage({ type: "success", text: "Password set. You can sign in with it next time." });
     } finally {
       setPasswordLoading(false);
+    }
+  };
+
+  const handleRestorePurchases = async () => {
+    setRestoreLoading(true);
+    setRestoreMessage(null);
+    try {
+      const { Purchases } = await import("@revenuecat/purchases-js");
+      const purchases = Purchases.getSharedInstance();
+      await purchases.getCustomerInfo();
+      setRestoreMessage({ type: "success", text: "Purchases restored successfully." });
+    } catch {
+      setRestoreMessage({ type: "error", text: "Nothing to restore, or an error occurred." });
+    } finally {
+      setRestoreLoading(false);
     }
   };
 
@@ -228,6 +245,29 @@ export default function AccountPage() {
           {inviteMessage && (
             <p style={{ fontSize: "13px", marginTop: "8px", marginBottom: 0, color: inviteMessage.type === "success" ? "var(--green)" : "#c0392b" }}>
               {inviteMessage.text}
+            </p>
+          )}
+        </section>
+
+        {/* Restore purchases */}
+        <section style={{ marginTop: "32px", paddingTop: "24px", borderTop: "1px solid var(--soft)" }}>
+          <h2 style={{ fontSize: "14px", fontWeight: 600, color: "var(--ink)", marginBottom: "4px" }}>
+            Restore purchases
+          </h2>
+          <p style={{ fontSize: "13px", color: "var(--ink-soft)", marginBottom: "12px" }}>
+            Already subscribed? Tap below to restore your access on this device.
+          </p>
+          <button
+            type="button"
+            onClick={handleRestorePurchases}
+            disabled={restoreLoading}
+            style={{ padding: "10px 16px", fontSize: "14px", fontWeight: 500, border: "1px solid var(--soft)", borderRadius: "8px", background: "var(--white)", color: "var(--ink)", cursor: restoreLoading ? "not-allowed" : "pointer", opacity: restoreLoading ? 0.6 : 1 }}
+          >
+            {restoreLoading ? "Restoring…" : "Restore purchases"}
+          </button>
+          {restoreMessage && (
+            <p style={{ fontSize: "13px", marginTop: "10px", marginBottom: 0, color: restoreMessage.type === "success" ? "var(--green)" : "#c0392b" }}>
+              {restoreMessage.text}
             </p>
           )}
         </section>

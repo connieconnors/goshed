@@ -240,6 +240,16 @@ export function PaywallModal({
           </button>
         </div>
 
+        <p style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 8, textAlign: "center", lineHeight: 1.5 }}>
+          Renews automatically. Cancel anytime in Settings.
+          Yearly billed as $24.99/year. Monthly billed as $2.99/month.
+        </p>
+        <p style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 4, textAlign: "center" }}>
+          <a href="/privacy" style={{ color: "var(--ink-soft)" }}>Privacy Policy</a>
+          {" · "}
+          <a href="/terms" style={{ color: "var(--ink-soft)" }}>Terms</a>
+        </p>
+
         {purchaseError && (
           <p style={{ color: "#c00", fontSize: 14, marginTop: 10 }}>{purchaseError}</p>
         )}

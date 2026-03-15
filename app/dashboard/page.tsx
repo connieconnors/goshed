@@ -26,14 +26,13 @@ const REC_LABELS: Record<string, string> = {
   repurpose: "Repurpose",
 };
 
-/** Badge on each card: past tense + ✓ (single consistent style for all items). */
 const BADGE_LABELS: Record<string, string> = {
-  sell: "Sold ✓",
-  donate: "Donated ✓",
-  gift: "Gifted ✓",
-  curb: "Curbed ✓",
-  keep: "Kept ✓",
-  repurpose: "Repurposed ✓",
+  sell: "Sell",
+  donate: "Donate",
+  gift: "Gift",
+  curb: "Curb",
+  keep: "Keep",
+  repurpose: "Repurpose",
 };
 
 const FILTERS = ["all", "sell", "donate", "gift", "curb"] as const;
@@ -140,13 +139,17 @@ export default function DashboardPage() {
             go<em style={{ color: "var(--accent)" }}>shed</em>
           </Link>
           {mounted && userEmail && (
-            <Link
-              href="/account"
-              style={{ fontSize: "12px", color: "var(--ink-soft)", textDecoration: "none" }}
-              title="Account"
-            >
-              {userEmail}
-            </Link>
+            <div style={{ textAlign: "right" }}>
+              <Link
+                href="/account"
+                style={{ fontSize: "13px", fontWeight: 600, color: "var(--ink)", textDecoration: "none", display: "inline-block" }}
+              >
+                Account
+              </Link>
+              <p style={{ fontSize: "12px", color: "var(--ink-soft)", margin: "2px 0 0", lineHeight: 1.2 }}>
+                {userEmail}
+              </p>
+            </div>
           )}
         </div>
 
@@ -237,7 +240,7 @@ export default function DashboardPage() {
                       color: "var(--green)",
                     }}
                   >
-                    {BADGE_LABELS[item.recommendation] ?? `${item.recommendation} ✓`}
+                    {BADGE_LABELS[item.recommendation] ?? item.recommendation}
                   </span>
                 </p>
               </div>

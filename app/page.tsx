@@ -196,6 +196,7 @@ export default function Home() {
   const [rainNext24h, setRainNext24h] = useState<boolean | null>(null);
   const [showPaywallModal, setShowPaywallModal] = useState(false);
   const [paywallItemCount, setPaywallItemCount] = useState(20);
+  const [showAiConsent, setShowAiConsent] = useState(false);
 
   useEffect(() => {
     return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
@@ -203,6 +204,14 @@ export default function Home() {
 
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (!localStorage.getItem("goshed_ai_consent")) {
+        setShowAiConsent(true);
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -312,6 +321,11 @@ export default function Home() {
   }, [loading]);
 
   const handleZoneClick = () => inputRef.current?.click();
+
+  const handleAiConsentAccept = () => {
+    localStorage.setItem("goshed_ai_consent", "1");
+    setShowAiConsent(false);
+  };
 
   /** Run analyze + recommend with an existing data URL (e.g. after paywall success). */
   const runAnalyzeWithDataUrl = useCallback(async (dataUrl: string) => {
@@ -906,6 +920,31 @@ export default function Home() {
         onPurchaseSuccess={handlePaywallSuccess}
         itemCount={paywallItemCount}
       />
+      {showAiConsent && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 999, padding: "16px" }}>
+          <div style={{ background: "var(--white)", borderRadius: "16px", padding: "28px 24px", maxWidth: "400px", width: "100%", boxShadow: "0 8px 32px rgba(0,0,0,0.12)" }}>
+            <h2 style={{ fontFamily: "var(--font-cormorant)", fontSize: "22px", fontWeight: 600, color: "var(--ink)", marginBottom: "12px" }}>
+              A note about AI
+            </h2>
+            <p style={{ fontSize: "14px", color: "var(--ink-soft)", lineHeight: 1.6, marginBottom: "20px" }}>
+              GoShed uses AI to analyze your photos and suggest what to do with your items. Photos are sent to <strong style={{ color: "var(--ink)" }}>Anthropic (Claude)</strong> to generate recommendations. We don&apos;t use your data for advertising or share it with anyone else.
+            </p>
+            <button
+              type="button"
+              onClick={handleAiConsentAccept}
+              style={{ width: "100%", padding: "14px", fontSize: "15px", fontWeight: 600, borderRadius: "10px", border: "none", background: "var(--ink)", color: "var(--white)", cursor: "pointer" }}
+            >
+              Got it
+            </button>
+            <p style={{ fontSize: "11px", color: "var(--ink-soft)", marginTop: "12px", textAlign: "center" }}>
+              By continuing you agree to our{" "}
+              <a href="/privacy" style={{ color: "var(--ink-soft)" }}>Privacy Policy</a>
+              {" "}and{" "}
+              <a href="/terms" style={{ color: "var(--ink-soft)" }}>Terms</a>.
+            </p>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
