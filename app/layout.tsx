@@ -22,6 +22,22 @@ export const metadata: Metadata = {
   title: "GoShed",
   description:
     "Snap a photo of something you own and get an AI recommendation — gift, donate, sell, keep or trash — based on your life context.",
+  openGraph: {
+    title: "GoShed",
+    description:
+      "Snap a photo of something you own and get an AI recommendation — gift, donate, sell, keep or trash — based on your life context.",
+    url: "https://www.goshed.app",
+    siteName: "GoShed",
+    images: [{ url: "https://www.goshed.app/goshed-favicon-light.png", width: 1200, height: 630, alt: "GoShed" }],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "GoShed",
+    description:
+      "Snap a photo of something you own and get an AI recommendation — gift, donate, sell, keep or trash — based on your life context.",
+    images: ["https://www.goshed.app/goshed-favicon-light.png"],
+  },
 };
 
 export default function RootLayout({
