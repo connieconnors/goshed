@@ -89,6 +89,7 @@ export async function DELETE(
   const supabase = await createSupabaseServerClient();
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
+    console.error("[DELETE /api/items/:id] Unauthorized:", authError?.message ?? "no user");
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -106,11 +107,13 @@ export async function DELETE(
     .single();
 
   if (error) {
+    console.error("[DELETE /api/items/:id] Supabase error:", error.message, "id:", id);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
   if (!data) {
+    console.error("[DELETE /api/items/:id] No row deleted (not found or wrong user), id:", id);
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true }, { status: 200 });
 }

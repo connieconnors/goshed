@@ -43,6 +43,7 @@ export default function ItemDetailPage() {
   const [updating, setUpdating] = useState(false);
   const [draftRecommendation, setDraftRecommendation] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!id) {
@@ -106,8 +107,18 @@ export default function ItemDetailPage() {
 
   const handleDelete = async () => {
     if (!item) return;
-    const res = await fetch(`/api/items/${item.id}`, { method: "DELETE", credentials: "include" });
-    if (res.ok) router.push("/dashboard");
+    console.log("deleting item:", item.id);
+    const res = await fetch(`/api/items/${item.id}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    if (res.ok) {
+      router.push("/dashboard");
+    } else {
+      const body = await res.json().catch(() => ({}));
+      console.error("[delete] failed:", res.status, body);
+      alert("Couldn't delete this item. Please try again.");
+    }
   };
 
   if (loading) {
@@ -270,9 +281,10 @@ export default function ItemDetailPage() {
                 <button
                   type="button"
                   onClick={handleDelete}
-                  style={{ padding: "8px 16px", fontSize: "13px", background: "#c0392b", color: "var(--white)", border: "none", borderRadius: "8px", cursor: "pointer" }}
+                  disabled={deleting}
+                  style={{ padding: "8px 16px", fontSize: "13px", background: "#c0392b", color: "var(--white)", border: "none", borderRadius: "8px", cursor: deleting ? "not-allowed" : "pointer", opacity: deleting ? 0.7 : 1 }}
                 >
-                  Yes, remove it
+                  {deleting ? "Removing…" : "Yes, remove it"}
                 </button>
                 <button
                   type="button"

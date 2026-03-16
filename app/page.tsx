@@ -805,9 +805,9 @@ export default function Home() {
               <p style={{ fontSize: '14px', lineHeight: 1.5, color: 'var(--ink)', marginBottom: 0, marginTop: 0 }}>{firstSentence(recommendResult.reason)}</p>
             </div>
 
-            {/* Other options: pill chips */}
+            {/* Other options: 3-column grid (matches detail page, avoids orphan on mobile) */}
             <p style={{ fontSize: '13px', lineHeight: 1.2, fontWeight: 500, color: 'var(--ink-soft)', textAlign: 'center', marginTop: '18px', marginBottom: '10px' }}>Other options</p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '8px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
               {OTHER_OPTIONS_ORDER.filter(id => id !== recommendResult.recommendation).map(id => {
                 const opt = ACTION_OPTIONS.find(o => o.id === id);
                 if (!opt) return null;
