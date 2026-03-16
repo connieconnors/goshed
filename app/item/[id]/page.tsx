@@ -103,6 +103,12 @@ export default function ItemDetailPage() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!item || !confirm("Remove this item from your shed?")) return;
+    const res = await fetch(`/api/items/${item.id}`, { method: "DELETE", credentials: "include" });
+    if (res.ok) router.push("/dashboard");
+  };
+
   if (loading) {
     return (
       <main style={{ minHeight: "100vh", background: "var(--bg)", padding: "48px 24px", display: "flex", justifyContent: "center", alignItems: "center" }}>
@@ -239,28 +245,14 @@ export default function ItemDetailPage() {
               Save change
             </button>
           )}
+          <button
+            type="button"
+            onClick={handleDelete}
+            style={{ marginTop: "8px", background: "none", border: "none", padding: 0, fontSize: "13px", color: "var(--ink-soft)", textDecoration: "underline", cursor: "pointer" }}
+          >
+            Delete this item
+          </button>
         </div>
-
-        {/* Mark as done */}
-        <button
-          type="button"
-          disabled={item.status === "done" || updating}
-          onClick={() => patchItem({ status: "done" })}
-          style={{
-            width: "100%",
-            padding: "12px 16px",
-            fontSize: "14px",
-            fontWeight: 600,
-            border: item.status === "done" ? "1px solid var(--green)" : "1px solid var(--soft)",
-            borderRadius: "10px",
-            background: item.status === "done" ? "transparent" : "var(--white)",
-            color: item.status === "done" ? "var(--green)" : "var(--ink)",
-            cursor: item.status === "done" ? "default" : updating ? "not-allowed" : "pointer",
-            opacity: updating ? 0.7 : 1,
-          }}
-        >
-          {item.status === "done" ? "Done ✓" : "✓ Mark as done"}
-        </button>
 
         <p style={{ marginTop: "32px", fontSize: "13px", color: "var(--ink-soft)" }}>
           <Link href="/dashboard" style={{ color: "var(--ink-soft)", textDecoration: "none" }}>
