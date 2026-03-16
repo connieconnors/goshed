@@ -609,7 +609,7 @@ export default function Home() {
               let it go, beautifully
             </p>
           </div>
-          <div style={{ marginTop: '8px' }}>
+          <div style={{ marginTop: '8px' }} suppressHydrationWarning>
             {mounted && isLoggedIn === true && (
               <Link href="/dashboard" style={{ fontSize: '12px', color: 'var(--ink-soft)', textDecoration: 'none', borderBottom: '1px solid var(--soft)', paddingBottom: '1px' }}>
                 My Shed

@@ -90,7 +90,6 @@ export async function DELETE(
     const supabase = await createSupabaseServerClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
-      console.error("[DELETE /api/items/:id] Unauthorized:", authError?.message ?? "no user");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -99,24 +98,16 @@ export async function DELETE(
       return NextResponse.json({ error: "Missing id" }, { status: 400 });
     }
 
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from("items")
-      .delete()
+      .update({ hidden: true })
       .eq("id", id)
-      .eq("user_id", user.id)
-      .select("id")
-      .single();
+      .eq("user_id", user.id);
 
     if (error) {
-      console.error("[DELETE /api/items/:id] Supabase error:", error.message, "id:", id);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
-    if (!data) {
-      console.error("[DELETE /api/items/:id] No row deleted (not found or wrong user), id:", id);
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
-    }
-
-    return NextResponse.json({ success: true }, { status: 200 });
+    return NextResponse.json({ success: true });
   } catch (err) {
     console.error("[DELETE] unexpected error:", err);
     return NextResponse.json({ error: "Server error", details: String(err) }, { status: 500 });

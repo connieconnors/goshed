@@ -12,6 +12,7 @@ export async function GET() {
     .from("items")
     .select("id, photo_url, item_label, recommendation, value_range_raw, value_low, value_high, status, created_at")
     .eq("user_id", user.id)
+    .eq("hidden", false)
     .order("created_at", { ascending: false });
   if (error) {
     console.error("[api/items] list error:", error);

@@ -106,18 +106,24 @@ export default function ItemDetailPage() {
   };
 
   const handleDelete = async () => {
-    if (!item) return;
+    if (!item || deleting) return;
     console.log("deleting item:", item.id);
-    const res = await fetch(`/api/items/${item.id}`, {
-      method: "DELETE",
-      credentials: "include",
-    });
-    if (res.ok) {
-      router.push("/dashboard");
-    } else {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/items/${item.id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (res.ok) {
+        router.push("/dashboard");
+        return;
+      }
       const body = await res.json().catch(() => ({}));
+      const msg = (body && (typeof body.details === "string" ? body.details : body.error)) || "Couldn't delete this item. Please try again.";
       console.error("[delete] failed:", res.status, body);
-      alert("Couldn't delete this item. Please try again.");
+      alert(msg);
+    } finally {
+      setDeleting(false);
     }
   };
 

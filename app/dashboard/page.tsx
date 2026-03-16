@@ -135,19 +135,21 @@ export default function DashboardPage() {
           <Link href="/" style={{ fontFamily: "var(--font-cormorant)", fontSize: "24px", fontWeight: 300, color: "var(--ink)", textDecoration: "none" }}>
             go<em style={{ color: "var(--accent)" }}>shed</em>
           </Link>
-          {mounted && userEmail && (
-            <div style={{ textAlign: "right" }}>
-              <Link
-                href="/account"
-                style={{ fontSize: "13px", fontWeight: 600, color: "var(--ink)", textDecoration: "none", display: "inline-block" }}
-              >
-                Account
-              </Link>
-              <span style={{ display: "block", fontSize: "12px", color: "var(--ink-soft)", margin: "2px 0 0", lineHeight: 1.2 }}>
-                {userEmail}
-              </span>
-            </div>
-          )}
+          <div style={{ textAlign: "right" }} suppressHydrationWarning>
+            {mounted && userEmail ? (
+              <>
+                <Link
+                  href="/account"
+                  style={{ fontSize: "13px", fontWeight: 600, color: "var(--ink)", textDecoration: "none", display: "inline-block" }}
+                >
+                  Account
+                </Link>
+                <span style={{ display: "block", fontSize: "12px", color: "var(--ink-soft)", margin: "2px 0 0", lineHeight: 1.2 }}>
+                  {userEmail}
+                </span>
+              </>
+            ) : null}
+          </div>
         </div>
 
         {/* My Shed heading */}
