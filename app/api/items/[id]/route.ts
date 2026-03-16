@@ -69,7 +69,7 @@ export async function PATCH(
     .update(updates)
     .eq("id", id)
     .eq("user_id", user.id)
-    .select("id")
+    .select("id, photo_url, item_label, recommendation, value_range_raw, value_low, value_high, status, notes, created_at")
     .single();
 
   if (error) {
@@ -79,5 +79,5 @@ export async function PATCH(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json(data);
 }

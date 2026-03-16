@@ -26,6 +26,8 @@ const BADGE_LABELS: Record<string, string> = {
   repurpose: "Repurpose",
 };
 
+const REC_OPTIONS = ["sell", "donate", "gift", "curb", "keep", "repurpose"] as const;
+
 export default function ItemDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -33,6 +35,7 @@ export default function ItemDetailPage() {
   const [item, setItem] = useState<ItemDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
     if (!id) {
@@ -65,6 +68,26 @@ export default function ItemDetailPage() {
     return () => { cancelled = true; };
   }, [id, router]);
 
+  const patchItem = async (body: { recommendation?: string; status?: string }) => {
+    if (!id || updating) return;
+    setUpdating(true);
+    try {
+      const res = await fetch(`/api/items/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error("Update failed");
+      const data = await res.json();
+      setItem(data);
+    } catch {
+      // Keep current item state on error
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   if (loading) {
     return (
       <main style={{ minHeight: "100vh", background: "var(--bg)", padding: "48px 24px", display: "flex", justifyContent: "center", alignItems: "center" }}>
@@ -90,8 +113,11 @@ export default function ItemDetailPage() {
     <main style={{ minHeight: "100vh", background: "var(--bg)", padding: "48px 24px" }}>
       <div style={{ maxWidth: "560px", margin: "0 auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
-          <Link href="/dashboard" style={{ fontFamily: "var(--font-cormorant)", fontSize: "24px", fontWeight: 300, color: "var(--ink)", textDecoration: "none" }}>
+          <Link href="/" style={{ fontFamily: "var(--font-cormorant)", fontSize: "24px", fontWeight: 300, color: "var(--ink)", textDecoration: "none" }}>
             go<em style={{ color: "var(--accent)" }}>shed</em>
+          </Link>
+          <Link href="/dashboard" style={{ fontSize: "13px", fontWeight: 600, color: "var(--ink)", textDecoration: "none" }}>
+            My Shed
           </Link>
         </div>
 
@@ -147,9 +173,62 @@ export default function ItemDetailPage() {
           ) : null}
         </div>
 
-        <p style={{ marginTop: "32px" }}>
-          <Link href="/dashboard" style={{ fontSize: "13px", color: "var(--ink-soft)", textDecoration: "none" }}>
+        {/* Change recommendation */}
+        <p style={{ fontSize: "13px", fontWeight: 500, color: "var(--ink-soft)", marginTop: "24px", marginBottom: "10px" }}>
+          Change recommendation
+        </p>
+        <div style={{ display: "flex", gap: "8px", marginBottom: "20px", flexWrap: "wrap" }}>
+          {REC_OPTIONS.map((rec) => (
+            <button
+              key={rec}
+              type="button"
+              disabled={updating}
+              onClick={() => patchItem({ recommendation: rec })}
+              style={{
+                padding: "8px 14px",
+                fontSize: "13px",
+                fontWeight: 500,
+                border: "1px solid var(--soft)",
+                borderRadius: "999px",
+                background: item.recommendation === rec ? "var(--ink)" : "var(--surface)",
+                color: item.recommendation === rec ? "var(--white)" : "var(--ink)",
+                cursor: updating ? "not-allowed" : "pointer",
+                opacity: updating ? 0.7 : 1,
+              }}
+            >
+              {BADGE_LABELS[rec]}
+            </button>
+          ))}
+        </div>
+
+        {/* Mark as done */}
+        <button
+          type="button"
+          disabled={item.status === "done" || updating}
+          onClick={() => patchItem({ status: "done" })}
+          style={{
+            width: "100%",
+            padding: "12px 16px",
+            fontSize: "14px",
+            fontWeight: 600,
+            border: item.status === "done" ? "1px solid var(--green)" : "1px solid var(--soft)",
+            borderRadius: "10px",
+            background: item.status === "done" ? "transparent" : "var(--white)",
+            color: item.status === "done" ? "var(--green)" : "var(--ink)",
+            cursor: item.status === "done" ? "default" : updating ? "not-allowed" : "pointer",
+            opacity: updating ? 0.7 : 1,
+          }}
+        >
+          {item.status === "done" ? "Done ✓" : "✓ Mark as done"}
+        </button>
+
+        <p style={{ marginTop: "32px", fontSize: "13px", color: "var(--ink-soft)" }}>
+          <Link href="/dashboard" style={{ color: "var(--ink-soft)", textDecoration: "none" }}>
             ← Back to My Shed
+          </Link>
+          {" · "}
+          <Link href="/" style={{ color: "var(--ink-soft)", textDecoration: "none" }}>
+            + Add another item
           </Link>
         </p>
       </div>
