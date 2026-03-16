@@ -126,12 +126,7 @@ export default function DashboardPage() {
           text-overflow: ellipsis;
         }
         .dashboard-add-link {
-          display: none;
-        }
-        @media (min-width: 600px) {
-          .dashboard-add-link {
-            display: inline-block;
-          }
+          display: inline-block;
         }
       `}</style>
       <div style={{ maxWidth: "1400px", margin: "0 auto" }}>
@@ -155,7 +150,7 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* My Shed heading + Add item (desktop only; mobile uses circular button) */}
+        {/* My Shed heading + Add item */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: "8px", marginBottom: "16px" }}>
           <div>
             <h1 style={{ fontFamily: "var(--font-cormorant)", fontSize: "28px", fontWeight: 600, color: "var(--ink)", margin: 0, marginBottom: "4px" }}>
@@ -261,6 +256,11 @@ export default function DashboardPage() {
             {filter === "all" ? "No items yet. Snap a photo on the home page to get started." : `No ${filter} items.`}
           </p>
         )}
+        <div style={{ textAlign: "center", marginTop: "32px", paddingBottom: "32px" }}>
+          <Link href="/" style={{ fontSize: "14px", color: "var(--ink-soft)", textDecoration: "none", borderBottom: "1px solid var(--soft)", paddingBottom: "2px" }}>
+            + Add another item
+          </Link>
+        </div>
       </div>
     </main>
   );

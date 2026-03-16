@@ -132,7 +132,12 @@ export default function ItemDetailPage() {
 
   return (
     <main style={{ minHeight: "100vh", background: "var(--bg)", padding: "48px 24px" }}>
-      <div style={{ maxWidth: "560px", margin: "0 auto" }}>
+      <style>{`
+        @media (max-width: 599px) {
+          .item-detail-content { padding-left: 16px; padding-right: 16px; }
+        }
+      `}</style>
+      <div className="item-detail-content" style={{ maxWidth: "560px", margin: "0 auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
           <Link href="/" style={{ fontFamily: "var(--font-cormorant)", fontSize: "24px", fontWeight: 300, color: "var(--ink)", textDecoration: "none" }}>
             go<em style={{ color: "var(--accent)" }}>shed</em>
@@ -199,8 +204,8 @@ export default function ItemDetailPage() {
           <p style={{ fontSize: "13px", fontWeight: 500, color: "var(--ink-soft)", marginBottom: "10px" }}>
             Change recommendation
           </p>
-          <div style={{ display: "flex", gap: "8px", marginBottom: "10px", flexWrap: "wrap" }}>
-            {REC_OPTIONS.map((rec) => {
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px", marginBottom: "12px" }}>
+            {["sell", "donate", "gift", "curb", "keep", "repurpose"].map((rec) => {
               const isActive = (draftRecommendation ?? item.recommendation) === rec;
               return (
                 <button
@@ -231,27 +236,31 @@ export default function ItemDetailPage() {
               disabled={updating}
               onClick={() => patchItem({ recommendation: draftRecommendation }, () => setDraftRecommendation(null))}
               style={{
-                padding: "8px 16px",
+                width: "100%",
+                padding: "10px 16px",
                 fontSize: "13px",
                 fontWeight: 600,
                 border: "1px solid var(--ink)",
-                borderRadius: "999px",
+                borderRadius: "10px",
                 background: "var(--ink)",
                 color: "var(--white)",
                 cursor: updating ? "not-allowed" : "pointer",
                 opacity: updating ? 0.7 : 1,
+                marginBottom: "12px",
               }}
             >
               Save change
             </button>
           )}
-          <button
-            type="button"
-            onClick={handleDelete}
-            style={{ marginTop: "8px", background: "none", border: "none", padding: 0, fontSize: "13px", color: "var(--ink-soft)", textDecoration: "underline", cursor: "pointer" }}
-          >
-            Delete this item
-          </button>
+          <p style={{ textAlign: "center", marginTop: "12px" }}>
+            <button
+              type="button"
+              onClick={handleDelete}
+              style={{ background: "none", border: "none", fontSize: "13px", color: "var(--ink-soft)", textDecoration: "underline", cursor: "pointer" }}
+            >
+              Delete this item
+            </button>
+          </p>
         </div>
 
         <p style={{ marginTop: "32px", fontSize: "13px", color: "var(--ink-soft)" }}>
