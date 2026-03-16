@@ -20,6 +20,7 @@ const sourceSerif = Source_Serif_4({
 
 export const metadata: Metadata = {
   title: "GoShed",
+  manifest: "/manifest.json",
   description:
     "Snap a photo of something you own and get an AI recommendation — gift, donate, sell, keep or trash — based on your life context.",
   openGraph: {
@@ -47,6 +48,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${cormorant.variable} ${sourceSerif.variable}`}>
+      <head>
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="GoShed" />
+        <link rel="apple-touch-icon" href="/icons/icon-512x512.png" />
+      </head>
       <body className="antialiased" style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }} suppressHydrationWarning>
         <Script
           src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
