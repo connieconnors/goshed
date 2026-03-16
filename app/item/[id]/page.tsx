@@ -28,6 +28,11 @@ const BADGE_LABELS: Record<string, string> = {
 
 const REC_OPTIONS = ["sell", "donate", "gift", "curb", "keep", "repurpose"] as const;
 
+function normalizeStatus(s: unknown): string {
+  const v = typeof s === "string" ? s.toLowerCase() : "";
+  return v === "done" ? "done" : "pending";
+}
+
 export default function ItemDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -36,6 +41,7 @@ export default function ItemDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
+  const [draftRecommendation, setDraftRecommendation] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) {
@@ -57,7 +63,11 @@ export default function ItemDetailPage() {
         return res.json();
       })
       .then((data) => {
-        if (!cancelled && data) setItem(data);
+        if (!cancelled && data) {
+          const normalized = { ...data, status: normalizeStatus(data.status) };
+          setItem(normalized);
+          setDraftRecommendation(null);
+        }
       })
       .catch((err) => {
         if (!cancelled) setError(err.message ?? "Something went wrong");
@@ -68,7 +78,10 @@ export default function ItemDetailPage() {
     return () => { cancelled = true; };
   }, [id, router]);
 
-  const patchItem = async (body: { recommendation?: string; status?: string }) => {
+  const patchItem = async (
+    body: { recommendation?: string; status?: string },
+    onSuccess?: (data: ItemDetail) => void
+  ) => {
     if (!id || updating) return;
     setUpdating(true);
     try {
@@ -80,7 +93,9 @@ export default function ItemDetailPage() {
       });
       if (!res.ok) throw new Error("Update failed");
       const data = await res.json();
-      setItem(data);
+      const normalized = { ...data, status: normalizeStatus(data.status) };
+      setItem(normalized);
+      onSuccess?.(normalized);
     } catch {
       // Keep current item state on error
     } finally {
@@ -174,31 +189,56 @@ export default function ItemDetailPage() {
         </div>
 
         {/* Change recommendation */}
-        <p style={{ fontSize: "13px", fontWeight: 500, color: "var(--ink-soft)", marginTop: "24px", marginBottom: "10px" }}>
-          Change recommendation
-        </p>
-        <div style={{ display: "flex", gap: "8px", marginBottom: "20px", flexWrap: "wrap" }}>
-          {REC_OPTIONS.map((rec) => (
+        <div style={{ marginTop: "24px", marginBottom: "20px" }}>
+          <p style={{ fontSize: "13px", fontWeight: 500, color: "var(--ink-soft)", marginBottom: "10px" }}>
+            Change recommendation
+          </p>
+          <div style={{ display: "flex", gap: "8px", marginBottom: "10px", flexWrap: "wrap" }}>
+            {REC_OPTIONS.map((rec) => {
+              const isActive = (draftRecommendation ?? item.recommendation) === rec;
+              return (
+                <button
+                  key={rec}
+                  type="button"
+                  disabled={updating}
+                  onClick={() => setDraftRecommendation(rec)}
+                  style={{
+                    padding: "8px 14px",
+                    fontSize: "13px",
+                    fontWeight: 500,
+                    border: "1px solid var(--soft)",
+                    borderRadius: "999px",
+                    background: isActive ? "var(--ink)" : "var(--surface)",
+                    color: isActive ? "var(--white)" : "var(--ink)",
+                    cursor: updating ? "not-allowed" : "pointer",
+                    opacity: updating ? 0.7 : 1,
+                  }}
+                >
+                  {BADGE_LABELS[rec]}
+                </button>
+              );
+            })}
+          </div>
+          {draftRecommendation != null && draftRecommendation !== item.recommendation && (
             <button
-              key={rec}
               type="button"
               disabled={updating}
-              onClick={() => patchItem({ recommendation: rec })}
+              onClick={() => patchItem({ recommendation: draftRecommendation }, () => setDraftRecommendation(null))}
               style={{
-                padding: "8px 14px",
+                padding: "8px 16px",
                 fontSize: "13px",
-                fontWeight: 500,
-                border: "1px solid var(--soft)",
+                fontWeight: 600,
+                border: "1px solid var(--ink)",
                 borderRadius: "999px",
-                background: item.recommendation === rec ? "var(--ink)" : "var(--surface)",
-                color: item.recommendation === rec ? "var(--white)" : "var(--ink)",
+                background: "var(--ink)",
+                color: "var(--white)",
                 cursor: updating ? "not-allowed" : "pointer",
                 opacity: updating ? 0.7 : 1,
               }}
             >
-              {BADGE_LABELS[rec]}
+              Save change
             </button>
-          ))}
+          )}
         </div>
 
         {/* Mark as done */}
@@ -225,10 +265,6 @@ export default function ItemDetailPage() {
         <p style={{ marginTop: "32px", fontSize: "13px", color: "var(--ink-soft)" }}>
           <Link href="/dashboard" style={{ color: "var(--ink-soft)", textDecoration: "none" }}>
             ← Back to My Shed
-          </Link>
-          {" · "}
-          <Link href="/" style={{ color: "var(--ink-soft)", textDecoration: "none" }}>
-            + Add another item
           </Link>
         </p>
       </div>
