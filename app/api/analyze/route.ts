@@ -71,23 +71,24 @@ export async function POST(request: NextRequest) {
   }
 
   const supabase = await createSupabaseServerClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { data: { user } } = await supabase.auth.getUser();
 
-  const { count, error: countError } = await supabase
-    .from("items")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", user.id);
+  // Only logged-in users are subject to item count and paywall
+  if (user) {
+    const { count, error: countError } = await supabase
+      .from("items")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("hidden", false);
 
-  if (!countError && count !== null && count >= PAYWALL_ITEM_LIMIT) {
-    const isPro = await hasProEntitlement(user.id);
-    if (!isPro) {
-      return NextResponse.json(
-        { error: "paywall", itemCount: PAYWALL_ITEM_LIMIT },
-        { status: 402 }
-      );
+    if (!countError && count !== null && count >= PAYWALL_ITEM_LIMIT) {
+      const isPro = await hasProEntitlement(user.id);
+      if (!isPro) {
+        return NextResponse.json(
+          { error: "paywall", itemCount: PAYWALL_ITEM_LIMIT },
+          { status: 402 }
+        );
+      }
     }
   }
 
