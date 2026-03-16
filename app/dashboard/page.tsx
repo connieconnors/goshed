@@ -143,41 +143,32 @@ export default function DashboardPage() {
               >
                 Account
               </Link>
-              <p style={{ fontSize: "12px", color: "var(--ink-soft)", margin: "2px 0 0", lineHeight: 1.2 }}>
+              <span style={{ display: "block", fontSize: "12px", color: "var(--ink-soft)", margin: "2px 0 0", lineHeight: 1.2 }}>
                 {userEmail}
-              </p>
+              </span>
             </div>
           )}
         </div>
 
-        {/* My Shed heading + Add item */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: "8px", marginBottom: "16px" }}>
-          <div>
-            <h1 style={{ fontFamily: "var(--font-cormorant)", fontSize: "28px", fontWeight: 600, color: "var(--ink)", margin: 0, marginBottom: "4px" }}>
-              My Shed
-            </h1>
-            <p style={{ fontSize: "14px", color: "var(--ink-soft)", margin: 0 }}>
-              {items.length} item{items.length !== 1 ? "s" : ""}
+        {/* My Shed heading */}
+        <div style={{ marginBottom: "16px" }}>
+          <h1 style={{ fontFamily: "var(--font-cormorant)", fontSize: "28px", fontWeight: 600, color: "var(--ink)", margin: 0, marginBottom: "4px" }}>
+            My Shed
+          </h1>
+          <p style={{ fontSize: "14px", color: "var(--ink-soft)", margin: 0 }}>
+            {items.length} item{items.length !== 1 ? "s" : ""}
+          </p>
+          {items.length > 0 && (
+            <p style={{ fontSize: "12px", color: "var(--ink-soft)", marginTop: "4px", marginBottom: 0 }}>
+              {(["sell", "donate", "gift", "curb", "keep", "repurpose"] as const)
+                .map((rec) => {
+                  const count = items.filter((i) => i.recommendation === rec).length;
+                  return count > 0 ? `${REC_LABELS[rec]} (${count})` : null;
+                })
+                .filter(Boolean)
+                .join(" · ")}
             </p>
-            {items.length > 0 && (
-              <p style={{ fontSize: "12px", color: "var(--ink-soft)", marginTop: "4px", marginBottom: 0 }}>
-                {(["sell", "donate", "gift", "curb", "keep", "repurpose"] as const)
-                  .map((rec) => {
-                    const count = items.filter((i) => i.recommendation === rec).length;
-                    return count > 0 ? `${REC_LABELS[rec]} (${count})` : null;
-                  })
-                  .filter(Boolean)
-                  .join(" · ")}
-              </p>
-            )}
-          </div>
-          <Link
-            href="/"
-            className="dashboard-add-link"
-            style={{ fontSize: "13px", color: "var(--ink-soft)", textDecoration: "none", borderBottom: "1px solid var(--soft)", paddingBottom: "2px", flexShrink: 0 }}
-          >
-            ← Add item
-          </Link>
+          )}
         </div>
 
         <div style={{ display: "flex", gap: "8px", marginBottom: "20px", flexWrap: "wrap" }}>

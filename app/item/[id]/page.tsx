@@ -42,6 +42,7 @@ export default function ItemDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
   const [draftRecommendation, setDraftRecommendation] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     if (!id) {
@@ -104,7 +105,7 @@ export default function ItemDetailPage() {
   };
 
   const handleDelete = async () => {
-    if (!item || !confirm("Remove this item from your shed?")) return;
+    if (!item) return;
     const res = await fetch(`/api/items/${item.id}`, { method: "DELETE", credentials: "include" });
     if (res.ok) router.push("/dashboard");
   };
@@ -252,15 +253,37 @@ export default function ItemDetailPage() {
               Save change
             </button>
           )}
-          <p style={{ textAlign: "center", marginTop: "12px" }}>
-            <button
-              type="button"
-              onClick={handleDelete}
-              style={{ background: "none", border: "none", fontSize: "13px", color: "var(--ink-soft)", textDecoration: "underline", cursor: "pointer" }}
-            >
-              Delete this item
-            </button>
-          </p>
+          {!confirmDelete ? (
+            <p style={{ textAlign: "center", marginTop: "12px" }}>
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(true)}
+                style={{ background: "none", border: "none", fontSize: "13px", color: "var(--ink-soft)", textDecoration: "underline", cursor: "pointer" }}
+              >
+                Delete this item
+              </button>
+            </p>
+          ) : (
+            <div style={{ textAlign: "center", marginTop: "12px" }}>
+              <p style={{ fontSize: "13px", color: "var(--ink-soft)", marginBottom: "8px" }}>Remove this item from your shed?</p>
+              <div style={{ display: "flex", gap: "8px", justifyContent: "center" }}>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  style={{ padding: "8px 16px", fontSize: "13px", background: "#c0392b", color: "var(--white)", border: "none", borderRadius: "8px", cursor: "pointer" }}
+                >
+                  Yes, remove it
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(false)}
+                  style={{ padding: "8px 16px", fontSize: "13px", background: "none", border: "1px solid var(--soft)", borderRadius: "8px", cursor: "pointer" }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <p style={{ marginTop: "32px", fontSize: "13px", color: "var(--ink-soft)" }}>
