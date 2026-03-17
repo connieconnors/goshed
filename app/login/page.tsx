@@ -84,7 +84,11 @@ function LoginForm() {
       options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
     });
     setSending(false);
-    if (!error && email) localStorage.setItem(LAST_LOGIN_EMAIL_KEY, email);
+    if (!error && email) {
+      localStorage.setItem(LAST_LOGIN_EMAIL_KEY, email);
+      setSent(true);
+      return;
+    }
     if (error) {
       const isRateLimit =
         error.message?.toLowerCase().includes("rate limit") ||
@@ -94,9 +98,7 @@ function LoginForm() {
           ? "Too many sign-in attempts. Please wait about an hour, or try your password again."
           : error.message || "Could not send link. Try again."
       );
-      return;
     }
-    setSent(true);
   };
 
   const handleSubmit = async () => {
@@ -134,7 +136,11 @@ function LoginForm() {
       options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
     });
     setSending(false);
-    if (!error && email) localStorage.setItem(LAST_LOGIN_EMAIL_KEY, email);
+    if (!error && email) {
+      localStorage.setItem(LAST_LOGIN_EMAIL_KEY, email);
+      setSent(true);
+      return;
+    }
     if (error) {
       const isRateLimit =
         error.message?.toLowerCase().includes("rate limit") ||
@@ -142,11 +148,9 @@ function LoginForm() {
       setSendError(
         isRateLimit
           ? "Too many sign-in attempts. Please wait about an hour, or sign in with your password above."
-          : error.message || "Could not send magic link. Try again later."
+          : error.message || "Could not send link. Try again later."
       );
-      return;
     }
-    setSent(true);
   };
 
   if (checkingSession)
@@ -161,10 +165,10 @@ function LoginForm() {
       <div style={{ padding: 40, textAlign: "center", fontFamily: "sans-serif" }}>
         <h2>Check your email ✉️</h2>
         <p>
-          We sent a sign-in link to <strong>{email}</strong>
+          Check your email — we sent you a link to sign in.
         </p>
         <p style={{ color: "#888", fontSize: 14 }}>
-          Tap the link to sign in.
+          We sent it to <strong>{email}</strong>. Tap the link to sign in.
         </p>
         <p style={{ color: "#888", fontSize: 13, marginTop: 12 }}>
           Can&apos;t find it? Check spam, or wait a minute and try again.
@@ -184,7 +188,7 @@ function LoginForm() {
       <h2>Sign in to GoShed</h2>
       {authError && (
         <p style={{ color: "#c00", fontSize: 14, marginBottom: 12 }}>
-          Sign-in link expired or invalid. Request a new magic link below.
+          That link expired. Want a new one?
         </p>
       )}
       {invalidPasswordRecovery && (
@@ -275,7 +279,7 @@ function LoginForm() {
       >
         {sending
           ? (password.trim() ? "Signing in…" : "Sending…")
-          : (password.trim() ? "Sign in" : "Send sign-in link")}
+          : (password.trim() ? "Sign in" : "Send me a link")}
       </button>
     </div>
   );

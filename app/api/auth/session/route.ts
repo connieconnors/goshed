@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 /**
  * Returns the current auth session from server-readable cookies.
- * Use this so the client can know if the user is signed in after redirect from magic link,
+ * Use this so the client can know if the user is signed in after redirect from the sign-in link,
  * since the browser client may not see the session cookie immediately.
  */
 export async function GET() {

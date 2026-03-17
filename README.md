@@ -34,9 +34,9 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 - **GOOGLE_PLACES_API_KEY** – Used for nearby donation/place suggestions and contextual suggestions on the confirmation screen. Create in [Google Cloud Console](https://console.cloud.google.com/) (Places API).
 - **OPENWEATHERMAP_API_KEY** – Optional. Used for curb/large-item confirmation to show a rain heads-up. Free tier at [OpenWeatherMap](https://openweathermap.org/api). Add to `.env.local` as `OPENWEATHERMAP_API_KEY`.
 
-## Supabase auth (magic link) in production
+## Supabase auth (sign-in link) in production
 
-For magic-link sign-in to work on your live site (e.g. goshed.app):
+For sign-in link to work on your live site (e.g. goshed.app):
 
 1. **Redirect URLs** – In [Supabase Dashboard](https://supabase.com/dashboard) → your project → **Authentication** → **URL Configuration**, add your production callback to **Redirect URLs**, e.g.:
    - `https://goshed.app/auth/callback`

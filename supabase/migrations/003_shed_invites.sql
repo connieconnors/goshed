@@ -1,4 +1,4 @@
--- Family sharing: invite someone to view your shed via magic link
+-- Family sharing: invite someone to view your shed via link
 create table if not exists public.shed_invites (
   id uuid default gen_random_uuid() primary key,
   owner_user_id uuid references auth.users(id) on delete cascade,

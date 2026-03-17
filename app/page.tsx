@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@/lib/supabase';
 import { getRandomActionPrompt, type ActionPromptType } from '@/lib/actionPrompts';
 import { PaywallModal } from '@/app/components/PaywallModal';
@@ -169,7 +169,7 @@ function getDecisionTitle(id: RecommendResult['recommendation']): string {
   return ACTION_OPTIONS.find(o => o.id === id)?.label ?? id;
 }
 
-export default function Home() {
+function HomeContent() {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const refinementPhotoRef = useRef<HTMLInputElement>(null);
@@ -197,6 +197,21 @@ export default function Home() {
   const [showPaywallModal, setShowPaywallModal] = useState(false);
   const [paywallItemCount, setPaywallItemCount] = useState(20);
   const [showAiConsent, setShowAiConsent] = useState(false);
+  const [showGuestGateModal, setShowGuestGateModal] = useState(false);
+  const GUEST_ANALYSIS_LIMIT = 3;
+  const GUEST_COUNT_KEY = "goshed_guest_analysis_count";
+  const getStoredGuestCount = (): number => {
+    if (typeof localStorage === "undefined") return 0;
+    const v = localStorage.getItem(GUEST_COUNT_KEY);
+    const n = parseInt(v ?? "0", 10);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const guestAnalysisCountRef = useRef(getStoredGuestCount());
+  const [showWelcomeBanner, setShowWelcomeBanner] = useState(false);
+  const pathname = usePathname();
+  /** Force guest-mode limit from URL (e.g. ?guest=1). Set in useEffect to avoid hydration mismatch. */
+  const [forceGuestMode, setForceGuestMode] = useState(false);
+  const effectiveGuest = (isLoggedIn !== true) || forceGuestMode;
 
   useEffect(() => {
     return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
@@ -205,6 +220,21 @@ export default function Home() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const q = window.location.search;
+    if (q.includes("new_user=true")) setShowWelcomeBanner(true);
+    setForceGuestMode(q.includes("guest=1") || q.includes("guest=true"));
+    if (q.includes("paywall=1") || q.includes("paywall=true")) setShowPaywallModal(true);
+  }, []);
+
+  const handleDismissWelcomeBanner = useCallback(() => {
+    setShowWelcomeBanner(false);
+    fetch("/api/auth/welcome-shown", { method: "POST", credentials: "include" }).catch(() => {});
+    const next = pathname || "/";
+    router.replace(next, { scroll: false });
+  }, [pathname, router]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -366,6 +396,12 @@ export default function Home() {
       }
       const analysis = data as AnalyzeResult;
       setResult(analysis);
+      if (effectiveGuest) {
+        const next = (guestAnalysisCountRef.current || 0) + 1;
+        guestAnalysisCountRef.current = next;
+        if (typeof localStorage !== "undefined") localStorage.setItem(GUEST_COUNT_KEY, String(next));
+        if (next >= GUEST_ANALYSIS_LIMIT) setShowGuestGateModal(true);
+      }
       setLoading(false);
 
       setRecommendLoading(true);
@@ -415,11 +451,20 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [refinementNote]);
+  }, [refinementNote, isLoggedIn, forceGuestMode]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    // Use max of ref and localStorage so we never undercount (e.g. after remount)
+    const stored = getStoredGuestCount();
+    const fromRef = guestAnalysisCountRef.current ?? 0;
+    const guestCount = effectiveGuest ? Math.max(fromRef, stored) : 0;
+    if (effectiveGuest && guestCount >= GUEST_ANALYSIS_LIMIT) {
+      setShowGuestGateModal(true);
+      e.target.value = "";
+      return;
+    }
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(URL.createObjectURL(file));
     setResult(null);
@@ -595,9 +640,35 @@ export default function Home() {
     }
   };
 
+  // Defer full UI until after mount so server and client render identical HTML and hydration never mismatches (e.g. with extensions that alter the DOM).
+  if (!mounted) {
+    return (
+      <main style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '48px 24px' }}>
+        <div style={{ width: '100%', maxWidth: '390px', textAlign: 'center' }}>
+          <p style={{ color: 'var(--ink-soft)', fontSize: '14px' }}>Loading…</p>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '48px 24px' }}>
       <div style={{ width: '100%', maxWidth: '390px' }}>
+        {showWelcomeBanner && (
+          <div style={{ marginBottom: 16, padding: '14px 16px', background: 'var(--surface)', border: '1px solid var(--soft)', borderRadius: 12, position: 'relative', paddingRight: 40 }}>
+            <p style={{ margin: 0, fontSize: 14, color: 'var(--ink)', lineHeight: 1.5 }}>
+              You&apos;re in. Your first 20 items are free. After that, it&apos;s $2.99 a month.
+            </p>
+            <button
+              type="button"
+              onClick={handleDismissWelcomeBanner}
+              aria-label="Dismiss"
+              style={{ position: 'absolute', top: 12, right: 12, background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: 'var(--ink-soft)', lineHeight: 1, padding: 0 }}
+            >
+              ×
+            </button>
+          </div>
+        )}
 
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -609,13 +680,13 @@ export default function Home() {
               let it go, beautifully
             </p>
           </div>
-          <div style={{ marginTop: '8px' }} suppressHydrationWarning>
-            {mounted && isLoggedIn === true && (
+          <div style={{ marginTop: '8px' }}>
+            {isLoggedIn === true && (
               <Link href="/dashboard" style={{ fontSize: '12px', color: 'var(--ink-soft)', textDecoration: 'none', borderBottom: '1px solid var(--soft)', paddingBottom: '1px' }}>
                 My Shed
               </Link>
             )}
-            {mounted && isLoggedIn === false && (
+            {isLoggedIn === false && (
               <Link href="/login" style={{ fontSize: '12px', color: 'var(--ink-soft)', textDecoration: 'none', borderBottom: '1px solid var(--soft)', paddingBottom: '1px' }}>
                 Sign in
               </Link>
@@ -642,34 +713,36 @@ export default function Home() {
         </div>
 
         {/* Logged-out only: tagline, example pills, no-account line */}
-        {mounted && isLoggedIn === false && (
-          <div style={{ marginTop: '28px', textAlign: 'center' }}>
-            <p style={{ fontFamily: 'var(--font-cormorant)', fontSize: '20px', fontWeight: 300, color: 'var(--ink-soft)', lineHeight: 1.4, margin: 0 }}>
-              GoShed tells you what to do with it.
-            </p>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '16px' }}>
-              {['Sell', 'Donate', 'Gift'].map((label) => (
-                <span
-                  key={label}
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: '6px',
-                    fontSize: '11px',
-                    fontWeight: 600,
-                    background: 'var(--surface)',
-                    color: 'var(--ink)',
-                    border: '1px solid var(--surface2)',
-                  }}
-                >
-                  {label}
-                </span>
-              ))}
-            </div>
-            <p style={{ fontSize: '12px', color: 'var(--ink-soft)', marginTop: '14px', marginBottom: 0 }}>
-              No account needed to try
-            </p>
-          </div>
-        )}
+        <div style={{ marginTop: '28px', textAlign: 'center' }}>
+          {isLoggedIn === false ? (
+            <>
+              <p style={{ fontFamily: 'var(--font-cormorant)', fontSize: '20px', fontWeight: 300, color: 'var(--ink-soft)', lineHeight: 1.4, margin: 0 }}>
+                GoShed tells you what to do with it.
+              </p>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '16px' }}>
+                {['Sell', 'Donate', 'Gift'].map((label) => (
+                  <span
+                    key={label}
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      background: 'var(--surface)',
+                      color: 'var(--ink)',
+                      border: '1px solid var(--surface2)',
+                    }}
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
+              <p style={{ fontSize: '12px', color: 'var(--ink-soft)', marginTop: '14px', marginBottom: 0 }}>
+                No account needed to try
+              </p>
+            </>
+          ) : null}
+        </div>
 
         {/* Loading state: minimal, centered under image */}
         {loading && (
@@ -920,6 +993,85 @@ export default function Home() {
         onPurchaseSuccess={handlePaywallSuccess}
         itemCount={paywallItemCount}
       />
+      {showGuestGateModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="guest-gate-title"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 50,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 24,
+            background: "rgba(0,0,0,0.5)",
+          }}
+          onClick={(e) => e.target === e.currentTarget && setShowGuestGateModal(false)}
+        >
+          <div
+            style={{
+              background: "var(--white)",
+              borderRadius: 18,
+              padding: 28,
+              maxWidth: 380,
+              width: "100%",
+              boxShadow: "0 8px 32px rgba(44,36,22,0.15)",
+              fontFamily: "var(--font-body)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="guest-gate-title" style={{ fontFamily: "var(--font-cormorant)", fontSize: "22px", fontWeight: 600, color: "var(--ink)", marginTop: 0, marginBottom: 12 }}>
+              Keep your shed.
+            </h2>
+            <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.5, marginBottom: 24 }}>
+              Save everything you&apos;ve analyzed — free for up to 20 items.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <Link
+                href="/login"
+                onClick={() => {
+                  if (typeof sessionStorage !== "undefined") sessionStorage.setItem("redirect_after_login", "/");
+                  setShowGuestGateModal(false);
+                }}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  padding: "14px 20px",
+                  background: "var(--ink)",
+                  color: "var(--white)",
+                  borderRadius: 12,
+                  fontSize: 16,
+                  fontWeight: 600,
+                  textAlign: "center",
+                  textDecoration: "none",
+                  boxSizing: "border-box",
+                }}
+              >
+                Create a free account
+              </Link>
+              <button
+                type="button"
+                onClick={() => setShowGuestGateModal(false)}
+                style={{
+                  width: "100%",
+                  padding: "14px 20px",
+                  background: "transparent",
+                  color: "var(--ink-soft)",
+                  border: "1px solid var(--surface2)",
+                  borderRadius: 12,
+                  fontSize: 16,
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                Not now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showAiConsent && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 999, padding: "16px" }}>
           <div style={{ background: "var(--white)", borderRadius: "16px", padding: "28px 24px", maxWidth: "400px", width: "100%", boxShadow: "0 8px 32px rgba(0,0,0,0.12)" }}>
@@ -947,4 +1099,8 @@ export default function Home() {
       )}
     </main>
   );
+}
+
+export default function Home() {
+  return <HomeContent />;
 }

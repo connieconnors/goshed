@@ -184,7 +184,7 @@ export default function AccountPage() {
             Set a password
           </h2>
           <p style={{ fontSize: "13px", color: "var(--ink-soft)", marginBottom: "12px" }}>
-            Sign in with email and password next time instead of a magic link.
+            Sign in with email and password next time instead of a link.
           </p>
           <input
             type="password"

@@ -90,7 +90,7 @@ export function PaywallModal({
         if (cancelled) return;
         const current = offerings.current;
         if (!current) {
-          setOfferingsError("No plans available right now. Use a promo code below.");
+          setOfferingsError(null);
           return;
         }
         setMonthlyPackage(current.monthly ?? null);
@@ -179,6 +179,7 @@ export function PaywallModal({
     >
       <div
         style={{
+          position: "relative",
           background: "var(--white)",
           borderRadius: 18,
           padding: 28,
@@ -189,6 +190,31 @@ export function PaywallModal({
         }}
         onClick={(e) => e.stopPropagation()}
       >
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          style={{
+            position: "absolute",
+            top: 12,
+            right: 12,
+            width: 28,
+            height: 28,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 0,
+            background: "none",
+            border: "none",
+            color: "var(--ink-soft)",
+            fontSize: 18,
+            lineHeight: 1,
+            cursor: "pointer",
+            fontFamily: "inherit",
+          }}
+        >
+          ×
+        </button>
         <h2
           id="paywall-title"
           style={{
@@ -200,10 +226,10 @@ export function PaywallModal({
             marginBottom: 12,
           }}
         >
-          You&apos;ve made {itemCount} decisions. Ready to clear more space?
+          You&apos;ve filled your free shed.
         </h2>
         <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.5, marginBottom: 24 }}>
-          Go Pro for unlimited items and keep decluttering.
+          Keep going for $2.99 a month — or $24.99 for the year.
         </p>
 
         {offeringsError && (
@@ -218,7 +244,7 @@ export function PaywallModal({
             className="goshed-primary-btn"
             style={{ width: "100%", justifyContent: "center", padding: "14px 20px" }}
           >
-            {purchasing ? "Processing…" : yearlyPackage ? "$24.99/year" : offeringsError ? "$24.99/year (unavailable)" : "Loading…"}
+            {purchasing ? "Processing…" : "Get the year — $24.99"}
           </button>
           <button
             type="button"
@@ -236,18 +262,12 @@ export function PaywallModal({
               fontFamily: "inherit",
             }}
           >
-            {purchasing ? "Processing…" : monthlyPackage ? "$2.99/month" : offeringsError ? "$2.99/month (unavailable)" : "Loading…"}
+            {purchasing ? "Processing…" : "Continue — $2.99/month"}
           </button>
         </div>
 
         <p style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 8, textAlign: "center", lineHeight: 1.5 }}>
-          Renews automatically. Cancel anytime in Settings.
-          Yearly billed as $24.99/year. Monthly billed as $2.99/month.
-        </p>
-        <p style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 4, textAlign: "center" }}>
-          <a href="/privacy" style={{ color: "var(--ink-soft)" }}>Privacy Policy</a>
-          {" · "}
-          <a href="/terms" style={{ color: "var(--ink-soft)" }}>Terms</a>
+          Cancel anytime.
         </p>
 
         {purchaseError && (
@@ -269,7 +289,7 @@ export function PaywallModal({
               textDecoration: "underline",
             }}
           >
-            Have a promo code?
+            Have a code?
           </button>
         ) : (
           <div style={{ marginTop: 14 }}>
@@ -317,23 +337,6 @@ export function PaywallModal({
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={onClose}
-          style={{
-            marginTop: 16,
-            width: "100%",
-            padding: 10,
-            background: "none",
-            border: "none",
-            color: "var(--ink-soft)",
-            fontSize: 14,
-            cursor: "pointer",
-            textDecoration: "underline",
-          }}
-        >
-          Maybe later
-        </button>
       </div>
     </div>
   );
