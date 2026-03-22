@@ -81,6 +81,17 @@ const LOADING_PHRASES = [
 /** Gate for item save: only one POST per key across effect double-invokes (e.g. Strict Mode). Reset when user starts a new item. */
 let lastSavedItemKey: string | null = null;
 
+const GUEST_MODAL_SEEN_SESSION_KEY = "goshed_guest_modal_seen";
+
+function guestGateModalSeenThisSession(): boolean {
+  if (typeof sessionStorage === "undefined") return false;
+  return sessionStorage.getItem(GUEST_MODAL_SEEN_SESSION_KEY) === "true";
+}
+
+function markGuestGateModalSeenThisSession() {
+  if (typeof sessionStorage !== "undefined") sessionStorage.setItem(GUEST_MODAL_SEEN_SESSION_KEY, "true");
+}
+
 /** Derive shippable when analysis doesn't provide it: false if fragile, oversized, or full set; else true. */
 function deriveShippable(analysis: { item_label?: string; description?: string }): boolean {
   const text = `${analysis.item_label ?? ''} ${analysis.description ?? ''}`.toLowerCase();
@@ -198,6 +209,7 @@ function HomeContent() {
   const [paywallItemCount, setPaywallItemCount] = useState(20);
   const [showAiConsent, setShowAiConsent] = useState(false);
   const [showGuestGateModal, setShowGuestGateModal] = useState(false);
+  /** Guest limit: completed flows (analyze + initial recommendation), not uploads alone. */
   const GUEST_ANALYSIS_LIMIT = 3;
   const GUEST_COUNT_KEY = "goshed_guest_analysis_count";
   const getStoredGuestCount = (): number => {
@@ -212,6 +224,17 @@ function HomeContent() {
   /** Force guest-mode limit from URL (e.g. ?guest=1). Set in useEffect to avoid hydration mismatch. */
   const [forceGuestMode, setForceGuestMode] = useState(false);
   const effectiveGuest = (isLoggedIn !== true) || forceGuestMode;
+
+  const recordGuestFlowComplete = useCallback(() => {
+    if (!effectiveGuest) return;
+    const next = (guestAnalysisCountRef.current || 0) + 1;
+    guestAnalysisCountRef.current = next;
+    if (typeof localStorage !== "undefined") localStorage.setItem(GUEST_COUNT_KEY, String(next));
+    if (next >= GUEST_ANALYSIS_LIMIT && !guestGateModalSeenThisSession()) {
+      markGuestGateModalSeenThisSession();
+      setShowGuestGateModal(true);
+    }
+  }, [effectiveGuest]);
 
   useEffect(() => {
     return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
@@ -396,12 +419,6 @@ function HomeContent() {
       }
       const analysis = data as AnalyzeResult;
       setResult(analysis);
-      if (effectiveGuest) {
-        const next = (guestAnalysisCountRef.current || 0) + 1;
-        guestAnalysisCountRef.current = next;
-        if (typeof localStorage !== "undefined") localStorage.setItem(GUEST_COUNT_KEY, String(next));
-        if (next >= GUEST_ANALYSIS_LIMIT) setShowGuestGateModal(true);
-      }
       setLoading(false);
 
       setRecommendLoading(true);
@@ -440,6 +457,7 @@ function HomeContent() {
           return;
         }
         setRecommendResult(recData as RecommendResult);
+        recordGuestFlowComplete();
       } catch (recErr) {
         console.error('Recommend request failed:', recErr);
         setRecommendError('retry');
@@ -451,7 +469,7 @@ function HomeContent() {
     } finally {
       setLoading(false);
     }
-  }, [refinementNote, isLoggedIn, forceGuestMode]);
+  }, [refinementNote, isLoggedIn, forceGuestMode, recordGuestFlowComplete]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -461,8 +479,11 @@ function HomeContent() {
     const fromRef = guestAnalysisCountRef.current ?? 0;
     const guestCount = effectiveGuest ? Math.max(fromRef, stored) : 0;
     if (effectiveGuest && guestCount >= GUEST_ANALYSIS_LIMIT) {
-      setShowGuestGateModal(true);
       e.target.value = "";
+      if (!guestGateModalSeenThisSession()) {
+        markGuestGateModalSeenThisSession();
+        setShowGuestGateModal(true);
+      }
       return;
     }
     if (previewUrl) URL.revokeObjectURL(previewUrl);
