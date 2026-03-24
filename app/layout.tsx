@@ -51,10 +51,11 @@ export default function RootLayout({
     <html lang="en" className={`${cormorant.variable} ${sourceSerif.variable}`}>
       <head>
         <link rel="manifest" href="/manifest.json" />
+        <link rel="icon" href="/icon-192.png" sizes="192x192" type="image/png" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="GoShed" />
-        <link rel="apple-touch-icon" href="/icons/icon-512x512.png" />
+        <link rel="apple-touch-icon" href="/icon-512.png" />
       </head>
       <body className="antialiased" style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }} suppressHydrationWarning>
         <Script
