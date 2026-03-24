@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Cormorant_Garamond, Source_Serif_4 } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
+import { ClearGuestGateDismissedOnAuth } from "@/app/components/ClearGuestGateDismissedOnAuth";
 
 const GA_MEASUREMENT_ID = "G-CPJMZSBPRJ";
 
@@ -69,6 +70,7 @@ export default function RootLayout({
           `}
         </Script>
         <div style={{ flex: 1, display: "flex", flexDirection: "column" }} suppressHydrationWarning>
+          <ClearGuestGateDismissedOnAuth />
           {children}
         </div>
         <footer

@@ -10,7 +10,18 @@ export async function GET() {
   const supabase = await createSupabaseServerClient();
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error) {
-    return NextResponse.json({ user: null });
+    return NextResponse.json({ user: null, itemCount: null });
   }
-  return NextResponse.json({ user: user ?? null });
+  if (!user) {
+    return NextResponse.json({ user: null, itemCount: null });
+  }
+
+  const { count, error: countError } = await supabase
+    .from("items")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .eq("hidden", false);
+
+  const itemCount = !countError && count !== null ? count : 0;
+  return NextResponse.json({ user, itemCount });
 }

@@ -6,6 +6,8 @@ import { useRouter, usePathname } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@/lib/supabase';
 import { getRandomActionPrompt, type ActionPromptType } from '@/lib/actionPrompts';
 import { PaywallModal } from '@/app/components/PaywallModal';
+import { MOMENT_COPY } from '@/lib/momentCopy';
+import { guestGateDismissedInStorage, markGuestGateDismissed } from '@/lib/guestGateStorage';
 
 type AnalyzeResult = {
   item_label: string;
@@ -80,17 +82,6 @@ const LOADING_PHRASES = [
 
 /** Gate for item save: only one POST per key across effect double-invokes (e.g. Strict Mode). Reset when user starts a new item. */
 let lastSavedItemKey: string | null = null;
-
-const GUEST_MODAL_SEEN_SESSION_KEY = "goshed_guest_modal_seen";
-
-function guestGateModalSeenThisSession(): boolean {
-  if (typeof sessionStorage === "undefined") return false;
-  return sessionStorage.getItem(GUEST_MODAL_SEEN_SESSION_KEY) === "true";
-}
-
-function markGuestGateModalSeenThisSession() {
-  if (typeof sessionStorage !== "undefined") sessionStorage.setItem(GUEST_MODAL_SEEN_SESSION_KEY, "true");
-}
 
 /** Derive shippable when analysis doesn't provide it: false if fragile, oversized, or full set; else true. */
 function deriveShippable(analysis: { item_label?: string; description?: string }): boolean {
@@ -210,7 +201,7 @@ function HomeContent() {
   const [showAiConsent, setShowAiConsent] = useState(false);
   const [showGuestGateModal, setShowGuestGateModal] = useState(false);
   /** Guest limit: completed flows (analyze + initial recommendation), not uploads alone. */
-  const GUEST_ANALYSIS_LIMIT = 3;
+  const GUEST_ANALYSIS_LIMIT = 10;
   const GUEST_COUNT_KEY = "goshed_guest_analysis_count";
   const getStoredGuestCount = (): number => {
     if (typeof localStorage === "undefined") return 0;
@@ -220,6 +211,9 @@ function HomeContent() {
   };
   const guestAnalysisCountRef = useRef(getStoredGuestCount());
   const [showWelcomeBanner, setShowWelcomeBanner] = useState(false);
+  /** Logged-in user's non-hidden item count (from /api/auth/session); used for item-19 nudge. */
+  const [savedItemCount, setSavedItemCount] = useState<number | null>(null);
+  const [item19NudgeDismissed, setItem19NudgeDismissed] = useState(false);
   const pathname = usePathname();
   /** Force guest-mode limit from URL (e.g. ?guest=1). Set in useEffect to avoid hydration mismatch. */
   const [forceGuestMode, setForceGuestMode] = useState(false);
@@ -230,8 +224,7 @@ function HomeContent() {
     const next = (guestAnalysisCountRef.current || 0) + 1;
     guestAnalysisCountRef.current = next;
     if (typeof localStorage !== "undefined") localStorage.setItem(GUEST_COUNT_KEY, String(next));
-    if (next >= GUEST_ANALYSIS_LIMIT && !guestGateModalSeenThisSession()) {
-      markGuestGateModalSeenThisSession();
+    if (next === GUEST_ANALYSIS_LIMIT && !guestGateDismissedInStorage()) {
       setShowGuestGateModal(true);
     }
   }, [effectiveGuest]);
@@ -272,9 +265,14 @@ function HomeContent() {
 
     const checkSession = async (): Promise<boolean> => {
       const res = await fetch("/api/auth/session", { credentials: "include", cache: "no-store" });
-      const { user } = await res.json().catch(() => ({ user: null }));
-      setIsLoggedIn(!!user);
-      return !!user;
+      const data = await res.json().catch(() => ({})) as { user?: unknown; itemCount?: number | null };
+      setIsLoggedIn(!!data.user);
+      if (data.user && typeof data.itemCount === "number") {
+        setSavedItemCount(data.itemCount);
+      } else {
+        setSavedItemCount(null);
+      }
+      return !!data.user;
     };
 
     const run = async () => {
@@ -478,12 +476,11 @@ function HomeContent() {
     const stored = getStoredGuestCount();
     const fromRef = guestAnalysisCountRef.current ?? 0;
     const guestCount = effectiveGuest ? Math.max(fromRef, stored) : 0;
-    if (effectiveGuest && guestCount >= GUEST_ANALYSIS_LIMIT) {
+    if (effectiveGuest && guestCount >= GUEST_ANALYSIS_LIMIT && !guestGateDismissedInStorage()) {
       e.target.value = "";
-      if (!guestGateModalSeenThisSession()) {
-        markGuestGateModalSeenThisSession();
-        setShowGuestGateModal(true);
-      }
+      setLoading(false);
+      setRecommendLoading(false);
+      setShowGuestGateModal(true);
       return;
     }
     if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -545,6 +542,12 @@ function HomeContent() {
       .then((res) => res.json())
       .then((data: { id?: string }) => {
         if (data?.id) savedItemIdRef.current = data.id;
+        fetch("/api/auth/session", { credentials: "include", cache: "no-store" })
+          .then((r) => r.json())
+          .then((d: { itemCount?: number }) => {
+            if (typeof d.itemCount === "number") setSavedItemCount(d.itemCount);
+          })
+          .catch(() => {});
       })
       .catch((err) => console.error('[shed] save item failed:', err));
   }, [result, recommendResult, isLoggedIn]);
@@ -685,6 +688,45 @@ function HomeContent() {
               onClick={handleDismissWelcomeBanner}
               aria-label="Dismiss"
               style={{ position: 'absolute', top: 12, right: 12, background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: 'var(--ink-soft)', lineHeight: 1, padding: 0 }}
+            >
+              ×
+            </button>
+          </div>
+        )}
+
+        {isLoggedIn === true && savedItemCount === 19 && !item19NudgeDismissed && (
+          <div
+            role="status"
+            style={{
+              marginBottom: 16,
+              padding: "12px 14px",
+              background: "var(--surface)",
+              border: "1px solid var(--soft)",
+              borderRadius: 12,
+              position: "relative",
+              paddingRight: 36,
+            }}
+          >
+            <p style={{ margin: 0, fontSize: 13, color: "var(--ink)", lineHeight: 1.5 }}>{MOMENT_COPY.item19Nudge}</p>
+            <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.45 }}>
+              {MOMENT_COPY.item19NudgeSubtext}
+            </p>
+            <button
+              type="button"
+              onClick={() => setItem19NudgeDismissed(true)}
+              aria-label="Dismiss"
+              style={{
+                position: "absolute",
+                top: 10,
+                right: 10,
+                background: "none",
+                border: "none",
+                fontSize: 16,
+                cursor: "pointer",
+                color: "var(--ink-soft)",
+                lineHeight: 1,
+                padding: 0,
+              }}
             >
               ×
             </button>
@@ -1029,7 +1071,12 @@ function HomeContent() {
             padding: 24,
             background: "rgba(0,0,0,0.5)",
           }}
-          onClick={(e) => e.target === e.currentTarget && setShowGuestGateModal(false)}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              markGuestGateDismissed();
+              setShowGuestGateModal(false);
+            }
+          }}
         >
           <div
             style={{
@@ -1046,8 +1093,11 @@ function HomeContent() {
             <h2 id="guest-gate-title" style={{ fontFamily: "var(--font-cormorant)", fontSize: "22px", fontWeight: 600, color: "var(--ink)", marginTop: 0, marginBottom: 12 }}>
               Keep your shed.
             </h2>
-            <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.5, marginBottom: 24 }}>
-              Save everything you&apos;ve analyzed — free for up to 20 items.
+            <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.5, marginBottom: 8 }}>
+              {MOMENT_COPY.guestGateBody}
+            </p>
+            <p style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.45, marginBottom: 24, opacity: 0.92 }}>
+              {MOMENT_COPY.guestGateSubtext}
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <Link
@@ -1074,7 +1124,10 @@ function HomeContent() {
               </Link>
               <button
                 type="button"
-                onClick={() => setShowGuestGateModal(false)}
+                onClick={() => {
+                  markGuestGateDismissed();
+                  setShowGuestGateModal(false);
+                }}
                 style={{
                   width: "100%",
                   padding: "14px 20px",

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { MOMENT_COPY } from "@/lib/momentCopy";
 import { Purchases } from "@revenuecat/purchases-js";
 import type { Package, Offerings } from "@revenuecat/purchases-js";
 
@@ -226,7 +227,7 @@ export function PaywallModal({
             marginBottom: 12,
           }}
         >
-          You&apos;ve filled your free shed.
+          {MOMENT_COPY.paywallTitle}
         </h2>
         <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.5, marginBottom: 24 }}>
           Keep going for $2.99 a month — or $24.99 for the year.
