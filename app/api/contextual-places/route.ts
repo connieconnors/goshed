@@ -55,7 +55,7 @@ async function fetchPlaces(
   });
 }
 
-/** Search: thrift donation (or for fabric/bedding: donation/clothing bins + animal rescue). 20km radius. Returns top 5–8 by distance. */
+/** Search: thrift store + donation drop off (or fabric/bedding: bins + animal rescue). 20km radius. Non-fabric: top 5 by distance; fabric: top 8. */
 export async function POST(request: NextRequest) {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) {
@@ -81,12 +81,12 @@ export async function POST(request: NextRequest) {
       // Consumer-facing donation bins (not B2B textile recyclers). Animal rescue/shelters for bedding and towels.
       const [binResults, rescueResults] = await Promise.all([
         Promise.all([
-          fetchPlaces(apiKey, `clothing donation bin near ${lat},${lng}`, lat, lng),
-          fetchPlaces(apiKey, `donation bin near ${lat},${lng}`, lat, lng),
+          fetchPlaces(apiKey, "clothing donation bin", lat, lng),
+          fetchPlaces(apiKey, "donation bin", lat, lng),
         ]).then(([a, b]) => [...a, ...b]),
         Promise.all([
-          fetchPlaces(apiKey, `animal rescue near ${lat},${lng}`, lat, lng),
-          fetchPlaces(apiKey, `animal shelter near ${lat},${lng}`, lat, lng),
+          fetchPlaces(apiKey, "animal rescue", lat, lng),
+          fetchPlaces(apiKey, "animal shelter", lat, lng),
         ]).then(([a, b]) => [...a, ...b]),
       ]);
       const byId = new Map<string, PlaceHit>();
@@ -99,9 +99,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ places });
     }
 
-    const searchQuery = `thrift donation near ${lat},${lng}`;
-    const places = await fetchPlaces(apiKey, searchQuery, lat, lng);
-    return NextResponse.json({ places: places.slice(0, 5) });
+    const [thriftResults, dropOffResults] = await Promise.all([
+      fetchPlaces(apiKey, "thrift store", lat, lng),
+      fetchPlaces(apiKey, "donation drop off", lat, lng),
+    ]);
+    const byId = new Map<string, PlaceHit>();
+    for (const p of [...thriftResults, ...dropOffResults]) {
+      const existing = byId.get(p.place_id);
+      if (existing == null || p.distance_mi < existing.distance_mi) {
+        byId.set(p.place_id, p);
+      }
+    }
+    const places = [...byId.values()]
+      .sort((a, b) => a.distance_mi - b.distance_mi)
+      .slice(0, 5);
+    return NextResponse.json({ places });
   } catch {
     return NextResponse.json({ places: [] });
   }

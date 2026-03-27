@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Cormorant_Garamond, Source_Serif_4 } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
@@ -19,10 +19,13 @@ const sourceSerif = Source_Serif_4({
   variable: "--font-source-serif",
 });
 
+export const viewport: Viewport = {
+  themeColor: "#F5F0E8",
+};
+
 export const metadata: Metadata = {
   title: "GoShed",
   manifest: "/manifest.json",
-  themeColor: "#F5F0E8",
   description:
     "Snap a photo of something you own and get an AI recommendation — gift, donate, sell, keep or trash — based on your life context.",
   openGraph: {
