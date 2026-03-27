@@ -22,6 +22,7 @@ const sourceSerif = Source_Serif_4({
 export const metadata: Metadata = {
   title: "GoShed",
   manifest: "/manifest.json",
+  themeColor: "#F5F0E8",
   description:
     "Snap a photo of something you own and get an AI recommendation — gift, donate, sell, keep or trash — based on your life context.",
   openGraph: {
