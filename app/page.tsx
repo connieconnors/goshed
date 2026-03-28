@@ -63,17 +63,6 @@ const RECOMMENDATION_ACTION_PHRASES: Record<RecommendResult['recommendation'], s
   trash: 'Trash it',
 };
 
-/** Confirmation / done label: "Listed ✓", "Donated ✓", etc. */
-export const DECISION_DONE_LABELS: Record<RecommendResult['recommendation'], string> = {
-  sell: 'Listed ✓',
-  donate: 'Donated ✓',
-  gift: 'Gifted ✓',
-  keep: 'Kept ✓',
-  repurpose: 'Repurposed ✓',
-  curb: 'Curbed ✓',
-  trash: 'Trashed ✓',
-};
-
 const LOADING_PHRASES = [
   'Looking at what this is',
   'Checking useful possibilities',
@@ -191,6 +180,8 @@ function HomeContent() {
   const savedForItemRef = useRef<string | null>(null);
   const savedItemIdRef = useRef<string | null>(null);
   const confirmedActionPromptRef = useRef<Record<string, string>>({});
+  /** LLM-generated two-beat gift copy (packaging + recipient); null while loading or when decision is not gift. */
+  const [giftConfirmationBeats, setGiftConfirmationBeats] = useState<string | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
   const [decisionJustConfirmed, setDecisionJustConfirmed] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -495,6 +486,7 @@ function HomeContent() {
     savedItemIdRef.current = null;
     lastSavedItemKey = null;
     confirmedActionPromptRef.current = {};
+    setGiftConfirmationBeats(null);
     setLoadingPhraseIndex(0);
     setRefinementNote('');
     setShowNoteInput(false);
@@ -551,6 +543,53 @@ function HomeContent() {
       })
       .catch((err) => console.error('[shed] save item failed:', err));
   }, [result, recommendResult, isLoggedIn]);
+
+  useEffect(() => {
+    if (chosenDecision !== 'gift') {
+      setGiftConfirmationBeats(null);
+      return;
+    }
+    if (!result?.item_label || !recommendResult?.reason) {
+      setGiftConfirmationBeats(null);
+      return;
+    }
+    const ac = new AbortController();
+    setGiftConfirmationBeats(null);
+
+    const fallbackGiftPrompt = () =>
+      confirmedActionPromptRef.current.gift ??
+      (confirmedActionPromptRef.current.gift = getRandomActionPrompt('gift', {
+        item_label: result.item_label,
+        description: result.description,
+      }));
+
+    (async () => {
+      try {
+        const res = await fetch('/api/gift-action-prompt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            item_label: result.item_label,
+            reason: recommendResult.reason,
+          }),
+          signal: ac.signal,
+        });
+        const data = (await res.json()) as { beats?: string[]; error?: string };
+        if (ac.signal.aborted) return;
+        if (res.ok && Array.isArray(data.beats) && data.beats.length === 2) {
+          const text = data.beats.map((s) => String(s).trim()).join('\n');
+          setGiftConfirmationBeats(text || fallbackGiftPrompt());
+        } else {
+          setGiftConfirmationBeats(fallbackGiftPrompt());
+        }
+      } catch {
+        if (ac.signal.aborted) return;
+        setGiftConfirmationBeats(fallbackGiftPrompt());
+      }
+    })();
+
+    return () => ac.abort();
+  }, [chosenDecision, result?.item_label, result?.description, recommendResult?.reason]);
 
   const recommendedAction = recommendResult
     ? ACTION_OPTIONS.find(o => o.id === recommendResult.recommendation)
@@ -829,9 +868,11 @@ function HomeContent() {
           <div style={{ marginTop: '20px', padding: '20px', background: 'var(--white)', borderRadius: '18px', border: '1px solid var(--surface2)', boxShadow: '0 2px 8px rgba(44,36,22,0.06)' }}>
             <p style={{ fontFamily: 'var(--font-cormorant)', fontSize: '18px', lineHeight: 1.35, fontWeight: 500, color: 'var(--ink)', marginBottom: '8px' }}>{result.item_label}</p>
             <p style={{ fontSize: '14px', lineHeight: 1.3, fontWeight: 500, color: 'var(--accent)', marginBottom: '8px' }}>{result.value_range}</p>
-            <p style={{ fontSize: '13px', lineHeight: 1.3, fontWeight: 500, color: 'var(--ink-soft)', marginBottom: '10px' }}>
-              {result.shippable ? 'Easy to ship' : 'Local only'}
-            </p>
+            {recommendResult?.recommendation === 'sell' ? (
+              <p style={{ fontSize: '13px', lineHeight: 1.3, fontWeight: 500, color: 'var(--ink-soft)', marginBottom: '10px' }}>
+                {result.shippable ? 'Easy to ship' : 'Local only'}
+              </p>
+            ) : null}
             <p style={{ fontSize: '14px', lineHeight: 1.5, fontWeight: 400, color: 'var(--ink-soft)', marginBottom: 0 }}>{firstSentence(result.description)}</p>
           </div>
         )}
@@ -973,23 +1014,42 @@ function HomeContent() {
               {(() => {
                 const btn = ALL_DISPLAY_OPTIONS.find(b => b.id === chosenDecision);
                 const displayLabel = btn?.id === 'curb' ? 'Curb' : btn?.label;
-                const doneLabel = DECISION_DONE_LABELS[chosenDecision as keyof typeof DECISION_DONE_LABELS] ?? `${displayLabel} ✓`;
-                const actionPrompt =
-                  confirmedActionPromptRef.current[chosenDecision] ??
-                  (confirmedActionPromptRef.current[chosenDecision] = getRandomActionPrompt(
-                    chosenDecision as ActionPromptType,
-                    result ? { item_label: result.item_label, description: result.description } : undefined
-                  ));
+                const confirmationHeader =
+                  RECOMMENDATION_ACTION_PHRASES[chosenDecision as keyof typeof RECOMMENDATION_ACTION_PHRASES] ??
+                  `${displayLabel ?? 'Decide'} it`;
+                const isGift = chosenDecision === 'gift';
+                const actionPrompt = isGift
+                  ? giftConfirmationBeats
+                  : confirmedActionPromptRef.current[chosenDecision] ??
+                    (confirmedActionPromptRef.current[chosenDecision] = getRandomActionPrompt(
+                      chosenDecision as ActionPromptType,
+                      result
+                        ? {
+                            item_label: result.item_label,
+                            description: result.description,
+                            value_range: result.value_range,
+                          }
+                        : undefined
+                    ));
                 return (
                   <>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
                       <span style={{ display: 'flex', width: '24px', height: '24px', borderRadius: '50%', background: 'var(--green)', color: 'var(--white)', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 700 }}>✓</span>
                       <span style={{ fontFamily: 'var(--font-cormorant)', fontSize: '16px', fontWeight: 600, color: 'var(--ink)' }}>
-                        {doneLabel.replace(' ✓', '')} — good call.
+                        {confirmationHeader} — good call.
                       </span>
                     </div>
-                    <p style={{ fontSize: '14px', color: 'var(--ink)', lineHeight: 1.5, marginBottom: '12px' }}>
-                      {actionPrompt}
+                    <p
+                      style={{
+                        fontSize: '14px',
+                        color: 'var(--ink)',
+                        lineHeight: 1.5,
+                        marginBottom: '12px',
+                        whiteSpace:
+                          (isGift && actionPrompt) || chosenDecision === 'sell' ? 'pre-line' : undefined,
+                      }}
+                    >
+                      {isGift && actionPrompt === null ? 'One moment…' : actionPrompt}
                     </p>
                     {chosenDecision === 'curb' && rainNext24h !== null && (
                       <p style={{ fontSize: '13px', color: rainNext24h ? 'var(--ink)' : 'var(--ink-soft)', lineHeight: 1.5, marginBottom: '12px', fontStyle: rainNext24h ? 'normal' : undefined }}>
@@ -1026,7 +1086,7 @@ function HomeContent() {
                       View your Shed →
                     </Link>
                     <br />
-                    <button onClick={() => { setChosenDecision(null); setContextualPlaces([]); setRainNext24h(null); }}
+                    <button onClick={() => { setChosenDecision(null); setGiftConfirmationBeats(null); setContextualPlaces([]); setRainNext24h(null); }}
                       style={{ fontSize: '13px', color: 'var(--ink-soft)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
                       ← Change my mind
                     </button>

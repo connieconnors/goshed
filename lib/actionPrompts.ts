@@ -4,6 +4,8 @@
  * Edit or add variations here to change copy without touching the UI.
  */
 
+import { parseValueRange } from "./parseValueRange";
+
 export type ActionPromptType =
   | "gift"
   | "donate"
@@ -28,13 +30,13 @@ export const ACTION_PROMPTS: Record<ActionPromptType, readonly [string, string, 
   gift: GIFT_PROMPTS_GENERIC,
   donate: [
     "Box it or bag it tonight. Leave it by the door so it actually leaves the house.",
-    "Set it aside tonight by the door. Tomorrow morning drop it off — one less thing in the house and someone else gets to use it.",
+    "Set it aside tonight by the door. Call ahead to confirm hours, then drop it off — one less thing in the house.",
     "Drop it off on your next errand run, or schedule a pickup. Out of sight, out of the house.",
   ],
   sell: [
-    "List it on Facebook Marketplace or Nextdoor — good photos, clean background, price to move. Local buyers for this kind of thing are usually quick.",
-    "Post on Craigslist or FB Marketplace. Snap a few shots in good light and set a fair price; sit on the number and it'll sit on the shelf.",
-    "Get it up on FB Marketplace, Craigslist, or Nextdoor today. Clear photos and a fair price; you've already decided — now just post it.",
+    "List it on local selling apps or in neighborhood buy/sell groups — good photos, clean background, price to move. Nearby buyers for this kind of thing are usually quick.",
+    "Post in a neighborhood buy/sell group or on local selling apps. Snap a few shots in good light and set a fair price; sit on the number and it'll sit on the shelf.",
+    "Get it onto secondhand marketplaces or resale apps today. Clear photos and a fair price; you've already decided — now just post it.",
   ],
   keep: [
     "Now you know it's a keeper. Give it a spot that does it justice — not a junk drawer.",
@@ -64,19 +66,35 @@ function isPlateLike(item_label: string, description: string): boolean {
   return /\b(plate|platter|serving (dish|tray|bowl)|dish|charger)\b/.test(text);
 }
 
-/** Pick one of the three prompts at random for a given type. For "gift", uses item context so plate-specific copy only appears for plate-like items. */
+const CONSIGNMENT_SENTENCE =
+  "At this price point, a local consignment shop might do the work for you — they'll photograph, list, and handle the sale.";
+
+/** Pick one of the three prompts at random for a given type. For "gift", uses item context so plate-specific copy only appears for plate-like items. For "sell", appends consignment copy when value_range high end is $100+. */
 export function getRandomActionPrompt(
   type: ActionPromptType,
-  context?: { item_label?: string; description?: string }
+  context?: { item_label?: string; description?: string; value_range?: string }
 ): string {
-  if (type === 'gift' && context) {
-    const label = context.item_label ?? '';
-    const desc = context.description ?? '';
+  if (type === "gift" && context) {
+    const label = context.item_label ?? "";
+    const desc = context.description ?? "";
     if (isPlateLike(label, desc)) {
       return GIFT_PROMPT_PLATE;
     }
     const index = Math.floor(Math.random() * GIFT_PROMPTS_GENERIC.length);
     return GIFT_PROMPTS_GENERIC[index];
+  }
+  if (type === "sell") {
+    const prompts = ACTION_PROMPTS.sell;
+    const index = Math.floor(Math.random() * prompts.length);
+    let text = prompts[index];
+    const raw = context?.value_range?.trim();
+    if (raw) {
+      const { value_high } = parseValueRange(raw);
+      if (value_high >= 100) {
+        text += `\n\n${CONSIGNMENT_SENTENCE}`;
+      }
+    }
+    return text;
   }
   const prompts = ACTION_PROMPTS[type];
   const index = Math.floor(Math.random() * prompts.length);
