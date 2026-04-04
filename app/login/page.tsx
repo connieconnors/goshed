@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import type { AuthResponse } from "@supabase/supabase-js";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
+import { getEmailsWithPassword } from "@/lib/authPasswordHint";
 
 const LAST_LOGIN_EMAIL_KEY = "goshed_last_login_email";
 
@@ -20,6 +21,10 @@ function LoginForm() {
   const [mounted, setMounted] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
 
+  const emailNorm = email.trim().toLowerCase();
+  const showPasswordSignIn =
+    mounted && emailNorm.length > 0 && getEmailsWithPassword().includes(emailNorm);
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -27,25 +32,50 @@ function LoginForm() {
   useEffect(() => {
     if (!mounted || typeof window === "undefined") return;
     let cancelled = false;
-    const supabase = createSupabaseBrowserClient();
-    supabase.auth.getSession().then((result: AuthResponse) => {
-      const session = result.data.session;
-      if (cancelled) return;
-      if (session) {
-        const stored = sessionStorage.getItem("redirect_after_login");
-        if (stored) {
-          sessionStorage.removeItem("redirect_after_login");
-          router.replace(stored);
-        } else {
-          router.replace("/");
-        }
-        router.refresh();
-      } else {
+    const slow = setTimeout(() => {
+      if (!cancelled) {
+        console.warn("[login] getSession still pending after 6s — showing form so UI is not stuck");
         setCheckingSession(false);
       }
-    });
+    }, 6000);
+    let supabase: ReturnType<typeof createSupabaseBrowserClient>;
+    try {
+      supabase = createSupabaseBrowserClient();
+    } catch (e) {
+      clearTimeout(slow);
+      console.error("[login] createSupabaseBrowserClient failed — check NEXT_PUBLIC_SUPABASE_* in .env.local", e);
+      setCheckingSession(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+    supabase.auth
+      .getSession()
+      .then((result: AuthResponse) => {
+        if (cancelled) return;
+        clearTimeout(slow);
+        const session = result.data.session;
+        if (session) {
+          const stored = sessionStorage.getItem("redirect_after_login");
+          if (stored) {
+            sessionStorage.removeItem("redirect_after_login");
+            router.replace(stored);
+          } else {
+            router.replace("/");
+          }
+          router.refresh();
+        } else {
+          setCheckingSession(false);
+        }
+      })
+      .catch((err: unknown) => {
+        clearTimeout(slow);
+        console.error("[login] getSession failed", err);
+        if (!cancelled) setCheckingSession(false);
+      });
     return () => {
       cancelled = true;
+      clearTimeout(slow);
     };
   }, [mounted, router]);
 
@@ -71,8 +101,8 @@ function LoginForm() {
     router.refresh();
   };
 
-  const handleSendLinkInstead = async () => {
-    if (typeof window === "undefined" || !email?.includes("@")) return;
+  const sendMagicLink = async () => {
+    if (typeof window === "undefined" || !emailNorm.includes("@")) return;
     setSendError(null);
     setInvalidPasswordRecovery(false);
     setSending(true);
@@ -80,93 +110,75 @@ function LoginForm() {
     if (redirect) sessionStorage.setItem("redirect_after_login", redirect);
     const supabase = createSupabaseBrowserClient();
     const { error } = await supabase.auth.signInWithOtp({
-      email,
+      email: emailNorm,
       options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
     });
     setSending(false);
-    if (!error && email) {
-      localStorage.setItem(LAST_LOGIN_EMAIL_KEY, email);
+    if (!error) {
+      localStorage.setItem(LAST_LOGIN_EMAIL_KEY, emailNorm);
       setSent(true);
       return;
     }
-    if (error) {
-      const isRateLimit =
-        error.message?.toLowerCase().includes("rate limit") ||
-        (error as { status?: number }).status === 429;
-      setSendError(
-        isRateLimit
-          ? "Too many sign-in attempts. Please wait about an hour, or try your password again."
-          : error.message || "Could not send link. Try again."
-      );
-    }
+    const isRateLimit =
+      error.message?.toLowerCase().includes("rate limit") ||
+      (error as { status?: number }).status === 429;
+    setSendError(
+      isRateLimit
+        ? "Too many sign-in attempts. Please wait about an hour, then try again."
+        : error.message || "Could not send link. Try again."
+    );
   };
 
-  const handleSubmit = async () => {
-    if (typeof window === "undefined" || !email?.includes("@")) return;
+  const handleSendMeALink = async () => {
+    await sendMagicLink();
+  };
+
+  const handleSignInWithPassword = async () => {
+    if (typeof window === "undefined" || !emailNorm.includes("@") || !password.trim()) return;
     setSendError(null);
     setInvalidPasswordRecovery(false);
     setSending(true);
     const redirect = searchParams.get("redirect");
     if (redirect) sessionStorage.setItem("redirect_after_login", redirect);
     const supabase = createSupabaseBrowserClient();
-
-    if (password.trim()) {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      setSending(false);
-      if (error) {
-        const isInvalidCreds =
-          error.message?.toLowerCase().includes("invalid login credentials") ||
-          error.message?.toLowerCase().includes("invalid credentials");
-        if (isInvalidCreds) {
-          setInvalidPasswordRecovery(true);
-          setSendError(null);
-        } else {
-          setSendError(error.message || "Invalid email or password.");
-        }
-        return;
+    const { error } = await supabase.auth.signInWithPassword({ email: emailNorm, password });
+    setSending(false);
+    if (error) {
+      const isInvalidCreds =
+        error.message?.toLowerCase().includes("invalid login credentials") ||
+        error.message?.toLowerCase().includes("invalid credentials");
+      if (isInvalidCreds) {
+        setInvalidPasswordRecovery(true);
+        setSendError(null);
+      } else {
+        setSendError(error.message || "Invalid email or password.");
       }
-      setInvalidPasswordRecovery(false);
-      if (email) localStorage.setItem(LAST_LOGIN_EMAIL_KEY, email);
-      redirectAfterLogin();
       return;
     }
-
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
-    });
-    setSending(false);
-    if (!error && email) {
-      localStorage.setItem(LAST_LOGIN_EMAIL_KEY, email);
-      setSent(true);
-      return;
-    }
-    if (error) {
-      const isRateLimit =
-        error.message?.toLowerCase().includes("rate limit") ||
-        (error as { status?: number }).status === 429;
-      setSendError(
-        isRateLimit
-          ? "Too many sign-in attempts. Please wait about an hour, or sign in with your password above."
-          : error.message || "Could not send link. Try again later."
-      );
-    }
+    setInvalidPasswordRecovery(false);
+    localStorage.setItem(LAST_LOGIN_EMAIL_KEY, emailNorm);
+    redirectAfterLogin();
   };
 
-  if (checkingSession)
+  const handleSendLinkInstead = async () => {
+    setPassword("");
+    setInvalidPasswordRecovery(false);
+    await sendMagicLink();
+  };
+
+  if (checkingSession) {
     return (
       <div style={{ padding: 40, textAlign: "center", fontFamily: "sans-serif" }}>
         <p style={{ color: "#666", fontSize: 16 }}>Checking session…</p>
       </div>
     );
+  }
 
-  if (sent)
+  if (sent) {
     return (
       <div style={{ padding: 40, textAlign: "center", fontFamily: "sans-serif" }}>
         <h2>Check your email ✉️</h2>
-        <p>
-          Check your email — we sent you a link to sign in.
-        </p>
+        <p>Check your email — we sent you a link to sign in.</p>
         <p style={{ color: "#888", fontSize: 14 }}>
           We sent it to <strong>{email}</strong>. Tap the link to sign in.
         </p>
@@ -175,6 +187,7 @@ function LoginForm() {
         </p>
       </div>
     );
+  }
 
   return (
     <div
@@ -192,7 +205,15 @@ function LoginForm() {
         </p>
       )}
       {invalidPasswordRecovery && (
-        <div style={{ marginBottom: 12, padding: 12, background: "#fff8f0", borderRadius: 8, border: "1px solid #e8d5c4" }}>
+        <div
+          style={{
+            marginBottom: 12,
+            padding: 12,
+            background: "#fff8f0",
+            borderRadius: 8,
+            border: "1px solid #e8d5c4",
+          }}
+        >
           <p style={{ color: "#8a5a2d", fontSize: 14, margin: 0 }}>
             Wrong password — or forgot it? We&apos;ll email you a sign-in link.
           </p>
@@ -212,7 +233,7 @@ function LoginForm() {
               fontFamily: "inherit",
             }}
           >
-            {sending ? "Sending…" : "Send link instead"}
+            {sending ? "Sending…" : "Send me a link instead"}
           </button>
         </div>
       )}
@@ -221,9 +242,7 @@ function LoginForm() {
           {sendError}
         </p>
       )}
-      <p style={{ color: "#888", fontSize: 14, marginBottom: 12 }}>
-        Enter your email. Have a password? Enter it below — otherwise we&apos;ll email you a link.
-      </p>
+
       <input
         type="email"
         value={email}
@@ -243,49 +262,88 @@ function LoginForm() {
           boxSizing: "border-box",
         }}
       />
-      <input
-        type="password"
-        value={password}
-        onChange={(e) => {
-          setPassword(e.target.value);
-          setInvalidPasswordRecovery(false);
-        }}
-        placeholder="Password (optional)"
-        autoComplete="current-password"
-        style={{
-          width: "100%",
-          padding: 12,
-          fontSize: 16,
-          borderRadius: 8,
-          border: "1px solid #ddd",
-          marginBottom: 12,
-          boxSizing: "border-box",
-        }}
-      />
-      <button
-        type="button"
-        onClick={handleSubmit}
-        disabled={sending || !email?.includes("@")}
-        style={{
-          width: "100%",
-          padding: 12,
-          background: sending ? "#8a7a6a" : "#3d2e20",
-          color: "white",
-          border: "none",
-          borderRadius: 8,
-          fontSize: 16,
-          cursor: sending ? "wait" : "pointer",
-        }}
-      >
-        {sending
-          ? (password.trim() ? "Signing in…" : "Sending…")
-          : (password.trim() ? "Sign in" : "Send me a link")}
-      </button>
+
+      {showPasswordSignIn ? (
+        <>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              setInvalidPasswordRecovery(false);
+            }}
+            placeholder="Password"
+            autoComplete="current-password"
+            style={{
+              width: "100%",
+              padding: 12,
+              fontSize: 16,
+              borderRadius: 8,
+              border: "1px solid #ddd",
+              marginBottom: 12,
+              boxSizing: "border-box",
+            }}
+          />
+          <button
+            type="button"
+            onClick={handleSignInWithPassword}
+            disabled={sending || !emailNorm.includes("@") || !password.trim()}
+            style={{
+              width: "100%",
+              padding: 12,
+              background: sending ? "#8a7a6a" : "#3d2e20",
+              color: "white",
+              border: "none",
+              borderRadius: 8,
+              fontSize: 16,
+              cursor: sending ? "wait" : "pointer",
+              marginBottom: 10,
+            }}
+          >
+            {sending ? "Signing in…" : "Sign in"}
+          </button>
+          <button
+            type="button"
+            onClick={handleSendLinkInstead}
+            disabled={sending}
+            style={{
+              width: "100%",
+              padding: 10,
+              background: "transparent",
+              color: "#3d2e20",
+              border: "none",
+              borderRadius: 8,
+              fontSize: 14,
+              textDecoration: "underline",
+              cursor: sending ? "wait" : "pointer",
+            }}
+          >
+            {sending ? "Sending…" : "Send me a link instead"}
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          onClick={handleSendMeALink}
+          disabled={sending || !emailNorm.includes("@")}
+          style={{
+            width: "100%",
+            padding: 12,
+            background: sending ? "#8a7a6a" : "#3d2e20",
+            color: "white",
+            border: "none",
+            borderRadius: 8,
+            fontSize: 16,
+            cursor: sending ? "wait" : "pointer",
+          }}
+        >
+          {sending ? "Sending…" : "Send me a link"}
+        </button>
+      )}
     </div>
   );
 }
 
-// Match LoginForm's initial "Checking session…" UI to avoid hydration mismatch (React #418)
 const loginFallback = (
   <div style={{ padding: 40, textAlign: "center", fontFamily: "sans-serif" }}>
     <p style={{ color: "#666", fontSize: 16 }}>Checking session…</p>

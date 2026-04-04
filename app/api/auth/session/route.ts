@@ -10,10 +10,10 @@ export async function GET() {
   const supabase = await createSupabaseServerClient();
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error) {
-    return NextResponse.json({ user: null, itemCount: null });
+    return NextResponse.json({ user: null, itemCount: null, code: null, welcomeSent: null });
   }
   if (!user) {
-    return NextResponse.json({ user: null, itemCount: null });
+    return NextResponse.json({ user: null, itemCount: null, code: null, welcomeSent: null });
   }
 
   const { count, error: countError } = await supabase
@@ -23,5 +23,21 @@ export async function GET() {
     .eq("hidden", false);
 
   const itemCount = !countError && count !== null ? count : 0;
-  return NextResponse.json({ user, itemCount });
+
+  let code: string | null = null;
+  let welcomeSent = true;
+  const { data: profile, error: profileError } = await supabase
+    .from("users")
+    .select("code, welcome_sent")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (!profileError && profile) {
+    const c = profile.code;
+    if (c !== undefined && c !== null && String(c).trim() !== "") {
+      code = String(c).trim();
+    }
+    welcomeSent = profile.welcome_sent === true;
+  }
+
+  return NextResponse.json({ user, itemCount, code, welcomeSent });
 }

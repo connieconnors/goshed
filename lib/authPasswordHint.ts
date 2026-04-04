@@ -1,6 +1,6 @@
 /**
- * LocalStorage hint for which emails have a password set (so login page can show password field).
- * Key is shared between login and account pages.
+ * LocalStorage list of emails that have a password on this device (login shows password + Sign in).
+ * Key: goshed_has_password_emails — JSON string array of lowercase emails.
  */
 export const HAS_PASSWORD_EMAILS_KEY = "goshed_has_password_emails";
 

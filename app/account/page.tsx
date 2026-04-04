@@ -4,10 +4,12 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
+import { useAuthSession } from "@/lib/auth-session-context";
 import { addEmailWithPassword } from "@/lib/authPasswordHint";
 
 export default function AccountPage() {
   const router = useRouter();
+  const { user: sessionUser, loading: sessionLoading, refresh: refreshAuthSession } = useAuthSession();
   const [user, setUser] = useState<{ id?: string; email?: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -23,17 +25,10 @@ export default function AccountPage() {
   const [restoreMessage, setRestoreMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    fetch("/api/auth/session", { credentials: "include" })
-      .then((res) => res.json().catch(() => ({ user: null })))
-      .then(({ user: u }) => {
-        if (!cancelled) setUser(u ?? null);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, []);
+    if (sessionLoading) return;
+    setUser(sessionUser ? { id: sessionUser.id, email: sessionUser.email ?? null } : null);
+    setLoading(false);
+  }, [sessionLoading, sessionUser]);
 
   const handleSignOut = async () => {
     const supabase = createSupabaseBrowserClient();
@@ -93,6 +88,8 @@ export default function AccountPage() {
         addEmailWithPassword(user.email);
         await fetch("/api/auth/password-set", { method: "POST", credentials: "include" });
       }
+      await fetch("/api/auth/welcome-shown", { method: "POST", credentials: "include" });
+      await refreshAuthSession();
       setNewPassword("");
       setConfirmPassword("");
       setPasswordMessage({ type: "success", text: "Password set. You can sign in with it next time." });

@@ -2,8 +2,8 @@
 
 import { useRef, useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { useRouter, usePathname } from 'next/navigation';
-import { createSupabaseBrowserClient } from '@/lib/supabase';
+import { useRouter } from 'next/navigation';
+import { useAuthSession } from '@/lib/auth-session-context';
 import { getRandomActionPrompt, type ActionPromptType } from '@/lib/actionPrompts';
 import { PaywallModal } from '@/app/components/PaywallModal';
 import { MOMENT_COPY } from '@/lib/momentCopy';
@@ -182,7 +182,14 @@ function HomeContent() {
   const confirmedActionPromptRef = useRef<Record<string, string>>({});
   /** LLM-generated two-beat gift copy (packaging + recipient); null while loading or when decision is not gift. */
   const [giftConfirmationBeats, setGiftConfirmationBeats] = useState<string | null>(null);
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
+  const {
+    refresh: refreshAuthSession,
+    loading: sessionLoading,
+    user: authUser,
+    itemCount: savedItemCount,
+    welcomeSent,
+  } = useAuthSession();
+  const isLoggedIn = sessionLoading ? null : !!authUser;
   const [decisionJustConfirmed, setDecisionJustConfirmed] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [contextualPlaces, setContextualPlaces] = useState<{ name: string; distance_mi: number; place_id: string }[]>([]);
@@ -201,11 +208,7 @@ function HomeContent() {
     return Number.isFinite(n) ? n : 0;
   };
   const guestAnalysisCountRef = useRef(getStoredGuestCount());
-  const [showWelcomeBanner, setShowWelcomeBanner] = useState(false);
-  /** Logged-in user's non-hidden item count (from /api/auth/session); used for item-19 nudge. */
-  const [savedItemCount, setSavedItemCount] = useState<number | null>(null);
   const [item19NudgeDismissed, setItem19NudgeDismissed] = useState(false);
-  const pathname = usePathname();
   /** Force guest-mode limit from URL (e.g. ?guest=1). Set in useEffect to avoid hydration mismatch. */
   const [forceGuestMode, setForceGuestMode] = useState(false);
   const effectiveGuest = (isLoggedIn !== true) || forceGuestMode;
@@ -231,17 +234,9 @@ function HomeContent() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const q = window.location.search;
-    if (q.includes("new_user=true")) setShowWelcomeBanner(true);
     setForceGuestMode(q.includes("guest=1") || q.includes("guest=true"));
     if (q.includes("paywall=1") || q.includes("paywall=true")) setShowPaywallModal(true);
   }, []);
-
-  const handleDismissWelcomeBanner = useCallback(() => {
-    setShowWelcomeBanner(false);
-    fetch("/api/auth/welcome-shown", { method: "POST", credentials: "include" }).catch(() => {});
-    const next = pathname || "/";
-    router.replace(next, { scroll: false });
-  }, [pathname, router]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -254,20 +249,8 @@ function HomeContent() {
   useEffect(() => {
     const justSignedIn = typeof window !== "undefined" && window.location.search.includes("signed_in=1");
 
-    const checkSession = async (): Promise<boolean> => {
-      const res = await fetch("/api/auth/session", { credentials: "include", cache: "no-store" });
-      const data = await res.json().catch(() => ({})) as { user?: unknown; itemCount?: number | null };
-      setIsLoggedIn(!!data.user);
-      if (data.user && typeof data.itemCount === "number") {
-        setSavedItemCount(data.itemCount);
-      } else {
-        setSavedItemCount(null);
-      }
-      return !!data.user;
-    };
-
     const run = async () => {
-      let loggedIn = await checkSession();
+      let loggedIn = !!(await refreshAuthSession()).user;
       if (justSignedIn) {
         if (loggedIn) {
           router.replace("/", { scroll: false });
@@ -276,7 +259,7 @@ function HomeContent() {
         // Mobile/slow clients: cookies may not be available on first request; retry with backoff.
         for (const delay of [300, 1000]) {
           await new Promise((r) => setTimeout(r, delay));
-          loggedIn = await checkSession();
+          loggedIn = !!(await refreshAuthSession()).user;
           if (loggedIn) {
             router.replace("/", { scroll: false });
             return;
@@ -287,23 +270,18 @@ function HomeContent() {
     };
 
     run();
-    const supabase = createSupabaseBrowserClient();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => checkSession());
-    return () => subscription.unsubscribe();
-  }, [router]);
+  }, [router, refreshAuthSession]);
 
   useEffect(() => {
     const redirect = typeof sessionStorage !== "undefined" ? sessionStorage.getItem("redirect_after_login") : null;
     if (!redirect) return;
-    fetch("/api/auth/session", { credentials: "include" })
-      .then((res) => res.json().catch(() => ({ user: null })))
-      .then(({ user }) => {
-        if (user) {
-          sessionStorage.removeItem("redirect_after_login");
-          window.location.href = redirect;
-        }
-      });
-  }, []);
+    refreshAuthSession().then(({ user }) => {
+      if (user) {
+        sessionStorage.removeItem("redirect_after_login");
+        window.location.href = redirect;
+      }
+    });
+  }, [refreshAuthSession]);
   useEffect(() => {
     return () => { if (refinementPhotoUrl) URL.revokeObjectURL(refinementPhotoUrl); };
   }, [refinementPhotoUrl]);
@@ -534,15 +512,10 @@ function HomeContent() {
       .then((res) => res.json())
       .then((data: { id?: string }) => {
         if (data?.id) savedItemIdRef.current = data.id;
-        fetch("/api/auth/session", { credentials: "include", cache: "no-store" })
-          .then((r) => r.json())
-          .then((d: { itemCount?: number }) => {
-            if (typeof d.itemCount === "number") setSavedItemCount(d.itemCount);
-          })
-          .catch(() => {});
+        refreshAuthSession().catch(() => {});
       })
       .catch((err) => console.error('[shed] save item failed:', err));
-  }, [result, recommendResult, isLoggedIn]);
+  }, [result, recommendResult, isLoggedIn, refreshAuthSession]);
 
   useEffect(() => {
     if (chosenDecision !== 'gift') {
@@ -717,22 +690,6 @@ function HomeContent() {
   return (
     <main style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '48px 24px' }}>
       <div style={{ width: '100%', maxWidth: '390px' }}>
-        {showWelcomeBanner && (
-          <div style={{ marginBottom: 16, padding: '14px 16px', background: 'var(--surface)', border: '1px solid var(--soft)', borderRadius: 12, position: 'relative', paddingRight: 40 }}>
-            <p style={{ margin: 0, fontSize: 14, color: 'var(--ink)', lineHeight: 1.5 }}>
-              You&apos;re in. Your first 20 items are free. After that, it&apos;s $2.99 a month.
-            </p>
-            <button
-              type="button"
-              onClick={handleDismissWelcomeBanner}
-              aria-label="Dismiss"
-              style={{ position: 'absolute', top: 12, right: 12, background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: 'var(--ink-soft)', lineHeight: 1, padding: 0 }}
-            >
-              ×
-            </button>
-          </div>
-        )}
-
         {isLoggedIn === true && savedItemCount === 19 && !item19NudgeDismissed && (
           <div
             role="status"
@@ -772,8 +729,16 @@ function HomeContent() {
           </div>
         )}
 
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        {/* Header — z-index keeps controls above in-page layers; Sign in uses router.push so navigation isn’t lost to overlays/prefetch edge cases */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            position: "relative",
+            zIndex: 2,
+          }}
+        >
           <div>
             <h1 style={{ fontFamily: 'var(--font-cormorant)', fontSize: '40px', fontWeight: 300, color: 'var(--ink)', lineHeight: 1 }}>
               go<em style={{ color: 'var(--accent)' }}>shed</em>
@@ -782,16 +747,49 @@ function HomeContent() {
               let it go, beautifully
             </p>
           </div>
-          <div style={{ marginTop: '8px' }}>
-            {isLoggedIn === true && (
-              <Link href="/dashboard" style={{ fontSize: '12px', color: 'var(--ink-soft)', textDecoration: 'none', borderBottom: '1px solid var(--soft)', paddingBottom: '1px' }}>
+          <div style={{ marginTop: "8px" }}>
+            {isLoggedIn === true ? (
+              <Link href="/dashboard" style={{ fontSize: "12px", color: "var(--ink-soft)", textDecoration: "none", borderBottom: "1px solid var(--soft)", paddingBottom: "1px" }}>
                 My Shed
               </Link>
-            )}
-            {isLoggedIn === false && (
-              <Link href="/login" style={{ fontSize: '12px', color: 'var(--ink-soft)', textDecoration: 'none', borderBottom: '1px solid var(--soft)', paddingBottom: '1px' }}>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  console.log("[home Sign in click]", {
+                    isLoggedIn,
+                    sessionLoading,
+                    authUserId: authUser?.id ?? null,
+                    welcomeSent,
+                    wouldShowPasswordGate:
+                      typeof window !== "undefined" &&
+                      window.location.pathname !== "/login" &&
+                      !window.location.pathname.startsWith("/auth/") &&
+                      !sessionLoading &&
+                      !!authUser &&
+                      !welcomeSent,
+                  });
+                  void router.push("/login");
+                }}
+                style={{
+                  fontSize: "12px",
+                  color: "var(--ink-soft)",
+                  textDecoration: "none",
+                  borderBottom: "1px solid var(--soft)",
+                  paddingBottom: "1px",
+                  background: "none",
+                  borderTop: "none",
+                  borderLeft: "none",
+                  borderRight: "none",
+                  paddingLeft: 0,
+                  paddingRight: 0,
+                  paddingTop: 0,
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
                 Sign in
-              </Link>
+              </button>
             )}
           </div>
         </div>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { MOMENT_COPY } from "@/lib/momentCopy";
+import { useAuthSession } from "@/lib/auth-session-context";
 import { Purchases } from "@revenuecat/purchases-js";
 import type { Package, Offerings } from "@revenuecat/purchases-js";
 
@@ -31,6 +32,7 @@ export function PaywallModal({
   const [promoLoading, setPromoLoading] = useState(false);
   const [promoError, setPromoError] = useState<string | null>(null);
   const [promoSuccess, setPromoSuccess] = useState<string | null>(null);
+  const { refresh } = useAuthSession();
 
   const ensureConfigured = useCallback(async (appUserId: string): Promise<boolean> => {
     if (!API_KEY) return false;
@@ -61,10 +63,8 @@ export function PaywallModal({
     const OFFERINGS_TIMEOUT_MS = 10_000;
 
     const run = async () => {
-      const res = await fetch("/api/auth/session", { credentials: "include" });
-      const data = await res.json().catch(() => ({}));
-      const user = data.user;
-      const uid = user?.id ?? null;
+      const snap = await refresh();
+      const uid = snap.user?.id ?? null;
       if (cancelled) return;
       setUserId(uid);
 
@@ -108,7 +108,7 @@ export function PaywallModal({
     return () => {
       cancelled = true;
     };
-  }, [open, ensureConfigured]);
+  }, [open, ensureConfigured, refresh]);
 
   const handlePurchase = useCallback(
     async (pkg: Package | null) => {

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useAuthSession } from "@/lib/auth-session-context";
 
 type ShedItem = {
   id: string;
@@ -39,6 +40,7 @@ const FILTERS = ["all", "sell", "donate", "gift", "curb"] as const;
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { user: sessionUser, loading: sessionLoading } = useAuthSession();
   const [items, setItems] = useState<ShedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("all");
@@ -50,20 +52,17 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    if (sessionLoading) return;
     let cancelled = false;
-    fetch("/api/auth/session", { credentials: "include" })
-      .then((res) => res.json().catch(() => ({ user: null })))
-      .then(({ user }) => {
-        if (cancelled) return null;
-        if (user?.email) setUserEmail(user.email);
-        if (!user) {
-          router.replace("/login?redirect=/dashboard");
-          return null;
-        }
-        return fetch("/api/items", { credentials: "include" });
-      })
+    if (!sessionUser) {
+      router.replace("/login?redirect=/dashboard");
+      setLoading(false);
+      return;
+    }
+    if (sessionUser.email) setUserEmail(sessionUser.email);
+    fetch("/api/items", { credentials: "include" })
       .then((res) => {
-        if (cancelled || res === null) return null;
+        if (cancelled) return null;
         if (!res.ok) return [];
         return res.json();
       })
@@ -77,8 +76,10 @@ export default function DashboardPage() {
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
-    return () => { cancelled = true; };
-  }, [router]);
+    return () => {
+      cancelled = true;
+    };
+  }, [router, sessionLoading, sessionUser]);
 
   const filteredItems =
     filter === "all"

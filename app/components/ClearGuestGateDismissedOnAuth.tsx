@@ -2,16 +2,13 @@
 
 import { useEffect } from "react";
 import { clearGuestGateDismissedForSignedInUser } from "@/lib/guestGateStorage";
+import { useAuthSession } from "@/lib/auth-session-context";
 
 /** Clears guest-gate dismissal from localStorage once we know the user has a session (any route). */
 export function ClearGuestGateDismissedOnAuth() {
+  const { user, loading } = useAuthSession();
   useEffect(() => {
-    fetch("/api/auth/session", { credentials: "include", cache: "no-store" })
-      .then((r) => r.json())
-      .then((d: { user?: unknown }) => {
-        if (d.user) clearGuestGateDismissedForSignedInUser();
-      })
-      .catch(() => {});
-  }, []);
+    if (!loading && user) clearGuestGateDismissedForSignedInUser();
+  }, [loading, user]);
   return null;
 }

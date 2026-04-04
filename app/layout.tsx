@@ -3,6 +3,8 @@ import { Cormorant_Garamond, Source_Serif_4 } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import { ClearGuestGateDismissedOnAuth } from "@/app/components/ClearGuestGateDismissedOnAuth";
+import { AuthSessionProvider } from "@/lib/auth-session-context";
+import { PasswordOnboardingGate } from "@/app/components/PasswordOnboardingGate";
 
 const GA_MEASUREMENT_ID = "G-CPJMZSBPRJ";
 
@@ -75,8 +77,12 @@ export default function RootLayout({
           `}
         </Script>
         <div style={{ flex: 1, display: "flex", flexDirection: "column" }} suppressHydrationWarning>
-          <ClearGuestGateDismissedOnAuth />
-          {children}
+          <AuthSessionProvider>
+            <PasswordOnboardingGate>
+              <ClearGuestGateDismissedOnAuth />
+              {children}
+            </PasswordOnboardingGate>
+          </AuthSessionProvider>
         </div>
         <footer
           style={{
