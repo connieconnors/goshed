@@ -115,7 +115,7 @@ export default function ItemDetailPage() {
         credentials: "include",
       });
       if (res.ok) {
-        router.push("/dashboard");
+        router.push("/shed");
         return;
       }
       const body = await res.json().catch(() => ({}));
@@ -139,7 +139,7 @@ export default function ItemDetailPage() {
     return (
       <main style={{ minHeight: "100vh", background: "var(--bg)", padding: "48px 24px" }}>
         <div style={{ maxWidth: "560px", margin: "0 auto" }}>
-          <Link href="/dashboard" style={{ fontSize: "13px", color: "var(--ink-soft)", textDecoration: "none" }}>
+          <Link href="/shed" style={{ fontSize: "13px", color: "var(--ink-soft)", textDecoration: "none" }}>
             ← Back to My Shed
           </Link>
           <p style={{ marginTop: "24px", color: "var(--ink-soft)", fontSize: "14px" }}>{error ?? "Item not found."}</p>
@@ -160,7 +160,7 @@ export default function ItemDetailPage() {
           <Link href="/" style={{ fontFamily: "var(--font-cormorant)", fontSize: "24px", fontWeight: 300, color: "var(--ink)", textDecoration: "none" }}>
             go<em style={{ color: "var(--accent)" }}>shed</em>
           </Link>
-          <Link href="/dashboard" style={{ fontSize: "13px", fontWeight: 600, color: "var(--ink)", textDecoration: "none" }}>
+          <Link href="/shed" style={{ fontSize: "13px", fontWeight: 600, color: "var(--ink)", textDecoration: "none" }}>
             My Shed
           </Link>
         </div>
@@ -305,7 +305,7 @@ export default function ItemDetailPage() {
         </div>
 
         <p style={{ marginTop: "32px", fontSize: "13px", color: "var(--ink-soft)" }}>
-          <Link href="/dashboard" style={{ color: "var(--ink-soft)", textDecoration: "none" }}>
+          <Link href="/shed" style={{ color: "var(--ink-soft)", textDecoration: "none" }}>
             ← Back to My Shed
           </Link>
         </p>

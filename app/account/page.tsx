@@ -146,7 +146,7 @@ export default function AccountPage() {
   return (
     <main style={{ minHeight: "100vh", background: "var(--bg)", padding: "48px 24px" }}>
       <div style={{ maxWidth: "400px", margin: "0 auto" }}>
-        <Link href="/dashboard" style={{ fontFamily: "var(--font-cormorant)", fontSize: "24px", fontWeight: 300, color: "var(--ink)", textDecoration: "none" }}>
+        <Link href="/shed" style={{ fontFamily: "var(--font-cormorant)", fontSize: "24px", fontWeight: 300, color: "var(--ink)", textDecoration: "none" }}>
           go<em style={{ color: "var(--accent)" }}>shed</em>
         </Link>
         <h1 style={{ fontFamily: "var(--font-cormorant)", fontSize: "28px", fontWeight: 600, color: "var(--ink)", marginTop: "24px", marginBottom: "8px" }}>
@@ -312,7 +312,7 @@ export default function AccountPage() {
         </section>
 
         <p style={{ marginTop: "32px" }}>
-          <Link href="/dashboard" style={{ fontSize: "13px", color: "var(--ink-soft)", textDecoration: "none" }}>
+          <Link href="/shed" style={{ fontSize: "13px", color: "var(--ink-soft)", textDecoration: "none" }}>
             ← Back to My Shed
           </Link>
         </p>

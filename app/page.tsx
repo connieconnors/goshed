@@ -769,7 +769,7 @@ function HomeContent() {
           </div>
           <div style={{ marginTop: "8px" }}>
             {isLoggedIn === true ? (
-              <Link href="/dashboard" style={{ fontSize: "12px", color: "var(--ink-soft)", textDecoration: "none", borderBottom: "1px solid var(--soft)", paddingBottom: "1px" }}>
+              <Link href="/shed" style={{ fontSize: "12px", color: "var(--ink-soft)", textDecoration: "none", borderBottom: "1px solid var(--soft)", paddingBottom: "1px" }}>
                 My Shed
               </Link>
             ) : (
@@ -1123,7 +1123,7 @@ function HomeContent() {
                       </div>
                     )}
                     <Link
-                      href="/dashboard"
+                      href="/shed"
                       style={{ fontSize: '13px', color: 'var(--accent)', textDecoration: 'none', display: 'inline-block', marginBottom: '14px' }}
                     >
                       View your Shed →

@@ -58,6 +58,7 @@ export async function PATCH(
   const validRec = ["sell", "donate", "gift", "curb", "keep", "repurpose"];
   const updates: { status?: string; recommendation?: string } = {};
   if (body.status === "done") updates.status = "done";
+  else if (body.status === "pending") updates.status = "pending";
   if (body.recommendation != null && validRec.includes(body.recommendation)) updates.recommendation = body.recommendation;
 
   if (Object.keys(updates).length === 0) {
