@@ -1,4 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  isFabricBedding,
+  isMedicalMobility,
+  isConsignmentContext,
+  getCarDonationPlacesQuery,
+  isBulkyPickupDonationContext,
+} from "@/lib/contextualSuggestions";
 
 function haversineKm(
   lat1: number,
@@ -16,16 +23,6 @@ function haversineKm(
       Math.sin(dLon / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
-}
-
-/** True if item sounds like fabric/bedding (used sheets, pillows, towels, blankets) for Places search. */
-function isFabricBedding(itemLabel: string | undefined): boolean {
-  if (!itemLabel?.trim()) return false;
-  const t = itemLabel.toLowerCase();
-  return (
-    /\b(sheet|pillowcase|pillow|blanket|towel|towels|fabric|bedding|linen)\b/.test(t) ||
-    /\b(comforter|quilt|spread|rag|scraps)\b/.test(t)
-  );
 }
 
 type PlaceHit = { name: string; place_id: string; distance_mi: number };
@@ -55,30 +52,29 @@ async function fetchPlaces(
   });
 }
 
-/** Search: thrift store + donation drop off (or fabric/bedding: bins + animal rescue). 20km radius. Non-fabric: top 5 by distance; fabric: top 8. */
+/** Fabric/bedding: bins + rescues, top 8. Else: thrift + extras; optional pickup orgs (ReStore, SVdP, SA) for bulky items, max 3. General non-fabric list capped at 5, deduped against pickup. */
 export async function POST(request: NextRequest) {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) {
-    return NextResponse.json({ places: [] });
+    return NextResponse.json({ places: [], pickupPlaces: [] });
   }
 
-  let body: { lat?: number; lng?: number; item_label?: string };
+  let body: { lat?: number; lng?: number; item_label?: string; value_range?: string; description?: string };
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ places: [] });
+    return NextResponse.json({ places: [], pickupPlaces: [] });
   }
 
-  const { lat, lng, item_label } = body;
+  const { lat, lng, item_label, value_range, description } = body;
   if (lat == null || lng == null) {
-    return NextResponse.json({ places: [] });
+    return NextResponse.json({ places: [], pickupPlaces: [] });
   }
 
   try {
     const fabric = isFabricBedding(item_label);
 
     if (fabric) {
-      // Consumer-facing donation bins (not B2B textile recyclers). Animal rescue/shelters for bedding and towels.
       const [binResults, rescueResults] = await Promise.all([
         Promise.all([
           fetchPlaces(apiKey, "clothing donation bin", lat, lng),
@@ -96,25 +92,66 @@ export async function POST(request: NextRequest) {
       const places = [...byId.values()]
         .sort((a, b) => a.distance_mi - b.distance_mi)
         .slice(0, 8);
-      return NextResponse.json({ places });
+      return NextResponse.json({ places, pickupPlaces: [] });
     }
 
-    const [thriftResults, dropOffResults] = await Promise.all([
+    const bulkyPickup = isBulkyPickupDonationContext(item_label, description);
+
+    const pickupSearchPromise: Promise<PlaceHit[]> = bulkyPickup
+      ? Promise.all([
+          fetchPlaces(apiKey, "Habitat for Humanity ReStore", lat, lng),
+          fetchPlaces(apiKey, "St. Vincent de Paul", lat, lng),
+          fetchPlaces(apiKey, "Salvation Army", lat, lng),
+        ]).then(([restoreHits, svdphits, saHits]) => {
+          const pickupById = new Map<string, PlaceHit>();
+          for (const p of [...restoreHits, ...svdphits, ...saHits]) {
+            const existing = pickupById.get(p.place_id);
+            if (existing == null || p.distance_mi < existing.distance_mi) {
+              pickupById.set(p.place_id, p);
+            }
+          }
+          return [...pickupById.values()]
+            .sort((a, b) => a.distance_mi - b.distance_mi)
+            .slice(0, 3);
+        })
+      : Promise.resolve([]);
+
+    const medical = isMedicalMobility(item_label);
+    const consignment = isConsignmentContext(item_label, value_range);
+    const carDonationQuery = getCarDonationPlacesQuery(item_label, value_range, description);
+
+    const queryPromises: Promise<PlaceHit[]>[] = [
       fetchPlaces(apiKey, "thrift store", lat, lng),
       fetchPlaces(apiKey, "donation drop off", lat, lng),
+    ];
+    if (medical) {
+      queryPromises.push(fetchPlaces(apiKey, "senior center", lat, lng));
+    }
+    if (consignment) {
+      queryPromises.push(fetchPlaces(apiKey, "consignment shop", lat, lng));
+    }
+    if (carDonationQuery) {
+      queryPromises.push(fetchPlaces(apiKey, carDonationQuery, lat, lng));
+    }
+
+    const [pickupPlaces, resultSets] = await Promise.all([
+      pickupSearchPromise,
+      Promise.all(queryPromises),
     ]);
+    const pickupIds = new Set(pickupPlaces.map((p) => p.place_id));
     const byId = new Map<string, PlaceHit>();
-    for (const p of [...thriftResults, ...dropOffResults]) {
+    for (const p of resultSets.flat()) {
       const existing = byId.get(p.place_id);
       if (existing == null || p.distance_mi < existing.distance_mi) {
         byId.set(p.place_id, p);
       }
     }
     const places = [...byId.values()]
+      .filter((p) => !pickupIds.has(p.place_id))
       .sort((a, b) => a.distance_mi - b.distance_mi)
       .slice(0, 5);
-    return NextResponse.json({ places });
+    return NextResponse.json({ places, pickupPlaces });
   } catch {
-    return NextResponse.json({ places: [] });
+    return NextResponse.json({ places: [], pickupPlaces: [] });
   }
 }

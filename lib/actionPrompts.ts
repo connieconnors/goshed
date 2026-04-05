@@ -5,6 +5,7 @@
  */
 
 import { parseValueRange } from "./parseValueRange";
+import { BULK_PICKUP_DONATION_COPY, isBulkyPickupDonationContext } from "./contextualSuggestions";
 
 export type ActionPromptType =
   | "gift"
@@ -31,7 +32,7 @@ export const ACTION_PROMPTS: Record<ActionPromptType, readonly [string, string, 
   donate: [
     "Box it or bag it tonight. Leave it by the door so it actually leaves the house.",
     "Set it aside tonight by the door. Call ahead to confirm hours, then drop it off — one less thing in the house.",
-    "Drop it off on your next errand run, or schedule a pickup. Out of sight, out of the house.",
+    "Call ahead to confirm what they accept and their hours — then get it out the door this week. Out of sight, out of the house.",
   ],
   sell: [
     "List it on local selling apps or in neighborhood buy/sell groups — good photos, clean background, price to move. Nearby buyers for this kind of thing are usually quick.",
@@ -82,6 +83,11 @@ export function getRandomActionPrompt(
     }
     const index = Math.floor(Math.random() * GIFT_PROMPTS_GENERIC.length);
     return GIFT_PROMPTS_GENERIC[index];
+  }
+  if (type === "donate" && context) {
+    if (isBulkyPickupDonationContext(context.item_label, context.description)) {
+      return BULK_PICKUP_DONATION_COPY;
+    }
   }
   if (type === "sell") {
     const prompts = ACTION_PROMPTS.sell;

@@ -193,6 +193,7 @@ function HomeContent() {
   const [decisionJustConfirmed, setDecisionJustConfirmed] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [contextualPlaces, setContextualPlaces] = useState<{ name: string; distance_mi: number; place_id: string }[]>([]);
+  const [pickupDonationPlaces, setPickupDonationPlaces] = useState<{ name: string; distance_mi: number; place_id: string }[]>([]);
   const [rainNext24h, setRainNext24h] = useState<boolean | null>(null);
   const [showPaywallModal, setShowPaywallModal] = useState(false);
   const [paywallItemCount, setPaywallItemCount] = useState(20);
@@ -290,6 +291,7 @@ function HomeContent() {
   useEffect(() => {
     if (chosenDecision !== 'donate') {
       setContextualPlaces([]);
+      setPickupDonationPlaces([]);
       return;
     }
     if (!navigator.geolocation) return;
@@ -300,17 +302,35 @@ function HomeContent() {
         fetch('/api/contextual-places', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lat, lng, item_label: result?.item_label }),
+          body: JSON.stringify({
+            lat,
+            lng,
+            item_label: result?.item_label,
+            value_range: result?.value_range,
+            description: result?.description,
+          }),
         })
           .then((res) => res.json())
-          .then((data: { places?: { name: string; distance_mi: number; place_id: string }[] }) => {
-            setContextualPlaces(data.places ?? []);
-          })
-          .catch(() => setContextualPlaces([]));
+          .then(
+            (data: {
+              places?: { name: string; distance_mi: number; place_id: string }[];
+              pickupPlaces?: { name: string; distance_mi: number; place_id: string }[];
+            }) => {
+              setContextualPlaces(data.places ?? []);
+              setPickupDonationPlaces(data.pickupPlaces ?? []);
+            }
+          )
+          .catch(() => {
+            setContextualPlaces([]);
+            setPickupDonationPlaces([]);
+          });
       },
-      () => setContextualPlaces([])
+      () => {
+        setContextualPlaces([]);
+        setPickupDonationPlaces([]);
+      }
     );
-  }, [chosenDecision, result?.item_label]);
+  }, [chosenDecision, result?.item_label, result?.description, result?.value_range]);
 
   // Fetch weather for curb — rain in next 24h so they know whether to put it out today
   useEffect(() => {
@@ -1056,7 +1076,32 @@ function HomeContent() {
                           : 'No rain expected — good day to put it out.'}
                       </p>
                     )}
-                    {chosenDecision === 'donate' && contextualPlaces.length > 0 && (
+                    {chosenDecision === 'donate' && pickupDonationPlaces.length > 0 && (
+                      <div style={{ marginBottom: '14px' }}>
+                        <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ink)', marginBottom: '8px', marginTop: 0 }}>
+                          Pickup options near you:
+                        </p>
+                        <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '14px', lineHeight: 1.6, color: 'var(--ink)' }}>
+                          {pickupDonationPlaces.map((place) => (
+                            <li key={place.place_id} style={{ marginBottom: '4px' }}>
+                              <a
+                                href={`https://www.google.com/maps/search/?api=1&query_place_id=${encodeURIComponent(place.place_id)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{ color: 'var(--accent)', textDecoration: 'none' }}
+                              >
+                                {place.name}
+                              </a>
+                              {' '}
+                              <span style={{ color: 'var(--ink-soft)' }}>{place.distance_mi} mi</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {chosenDecision === 'donate' &&
+                      contextualPlaces.length > 0 &&
+                      pickupDonationPlaces.length === 0 && (
                       <div style={{ marginBottom: '14px' }}>
                         <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ink)', marginBottom: '8px', marginTop: 0 }}>Near you:</p>
                         <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '14px', lineHeight: 1.6, color: 'var(--ink)' }}>
@@ -1084,7 +1129,7 @@ function HomeContent() {
                       View your Shed →
                     </Link>
                     <br />
-                    <button onClick={() => { setChosenDecision(null); setGiftConfirmationBeats(null); setContextualPlaces([]); setRainNext24h(null); }}
+                    <button onClick={() => { setChosenDecision(null); setGiftConfirmationBeats(null); setContextualPlaces([]); setPickupDonationPlaces([]); setRainNext24h(null); }}
                       style={{ fontSize: '13px', color: 'var(--ink-soft)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
                       ← Change my mind
                     </button>
