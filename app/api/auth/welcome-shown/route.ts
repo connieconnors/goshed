@@ -1,8 +1,20 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { createClient } from "@supabase/supabase-js";
 
-export async function POST() {
+async function parseSkipFlag(request: NextRequest): Promise<boolean> {
+  const contentType = request.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) return false;
+  try {
+    const body = (await request.json()) as { skipPasswordOnboarding?: unknown };
+    return body?.skipPasswordOnboarding === true;
+  } catch {
+    return false;
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const skipPasswordOnboarding = await parseSkipFlag(request);
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -12,7 +24,16 @@ export async function POST() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { error } = await supabase.from("users").update({ welcome_sent: true }).eq("id", user.id);
+  const nowIso = new Date().toISOString();
+  const patch = skipPasswordOnboarding
+    ? {
+        welcome_sent: true,
+        has_password_set: false,
+        skipped_password_at: nowIso,
+      }
+    : { welcome_sent: true };
+
+  const { error } = await supabase.from("users").update(patch).eq("id", user.id);
   if (!error) {
     return NextResponse.json({ ok: true });
   }
@@ -24,7 +45,7 @@ export async function POST() {
     const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey, {
       auth: { persistSession: false },
     });
-    const { error: adminErr } = await admin.from("users").update({ welcome_sent: true }).eq("id", user.id);
+    const { error: adminErr } = await admin.from("users").update(patch).eq("id", user.id);
     if (!adminErr) {
       return NextResponse.json({ ok: true });
     }

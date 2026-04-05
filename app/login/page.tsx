@@ -22,8 +22,26 @@ function LoginForm() {
   const [checkingSession, setCheckingSession] = useState(true);
 
   const emailNorm = email.trim().toLowerCase();
+  const [remoteHasPassword, setRemoteHasPassword] = useState(false);
+
+  useEffect(() => {
+    if (!mounted || !emailNorm.includes("@")) {
+      setRemoteHasPassword(false);
+      return;
+    }
+    const t = setTimeout(() => {
+      fetch(`/api/auth/has-password?email=${encodeURIComponent(emailNorm)}`, { cache: "no-store" })
+        .then((r) => r.json())
+        .then((d: { hasPassword?: unknown }) => setRemoteHasPassword(d.hasPassword === true))
+        .catch(() => setRemoteHasPassword(false));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [mounted, emailNorm]);
+
   const showPasswordSignIn =
-    mounted && emailNorm.length > 0 && getEmailsWithPassword().includes(emailNorm);
+    mounted &&
+    emailNorm.length > 0 &&
+    (getEmailsWithPassword().includes(emailNorm) || remoteHasPassword);
 
   useEffect(() => {
     setMounted(true);

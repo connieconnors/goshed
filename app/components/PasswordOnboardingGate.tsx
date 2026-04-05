@@ -10,13 +10,13 @@ import { addEmailWithPassword } from "@/lib/authPasswordHint";
 const DISABLE_PASSWORD_ONBOARDING_GATE = false;
 
 /**
- * After first magic-link sign-in, public.users.welcome_sent is false until the user
- * sets a password or skips. Blocks the app with a focused modal on any route.
+ * After first magic-link sign-in, prompts for a password or skip based on public.users
+ * (has_password_set, skipped_password_at) via GET /api/auth/password-onboarding-eligible.
  */
 export function PasswordOnboardingGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname() ?? "";
-  const { user, loading, welcomeSent, refresh } = useAuthSession();
+  const { user, loading, refresh } = useAuthSession();
   /** Full-screen gate must not cover sign-in entry routes or users cannot click anything. */
   const isAuthEntryRoute = pathname === "/login" || pathname.startsWith("/auth/");
   const [password, setPassword] = useState("");
@@ -24,29 +24,69 @@ export function PasswordOnboardingGate({ children }: { children: React.ReactNode
   const [submitting, setSubmitting] = useState(false);
   const [skipLoading, setSkipLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** null = eligibility not loaded yet; do not show the modal during this state. */
+  const [eligible, setEligible] = useState<boolean | null>(null);
+  const [eligibleLoading, setEligibleLoading] = useState(false);
 
-  const showGate = !isAuthEntryRoute && !loading && !!user && !welcomeSent;
+  useEffect(() => {
+    if (isAuthEntryRoute || !user) {
+      setEligible(null);
+      setEligibleLoading(false);
+      return;
+    }
+    if (loading) {
+      setEligible(null);
+      setEligibleLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setEligibleLoading(true);
+    setEligible(null);
+    fetch("/api/auth/password-onboarding-eligible", { credentials: "include", cache: "no-store" })
+      .then((r) => r.json())
+      .then((d: { eligible?: unknown }) => {
+        if (cancelled) return;
+        setEligible(d.eligible === true);
+      })
+      .catch(() => {
+        if (!cancelled) setEligible(false);
+      })
+      .finally(() => {
+        if (!cancelled) setEligibleLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, loading, isAuthEntryRoute]);
+
+  const showGate =
+    !isAuthEntryRoute &&
+    !loading &&
+    !eligibleLoading &&
+    !!user &&
+    eligible === true;
 
   useEffect(() => {
     console.log("[PasswordOnboardingGate] state (client)", {
       pathname,
       isAuthEntryRoute,
       loading,
+      eligibleLoading,
       hasUser: !!user,
       userId: user?.id ?? null,
-      welcomeSent,
+      eligible,
       showGate,
       hint: isAuthEntryRoute
         ? "Gate disabled on login/auth routes so buttons stay clickable."
         : showGate
           ? "Modal visible — complete password step or skip."
-          : loading
-            ? "Session still loading…"
+          : loading || eligibleLoading
+            ? "Session or eligibility loading…"
             : !user
               ? "Not signed in."
               : "Onboarding complete or not applicable.",
     });
-  }, [pathname, isAuthEntryRoute, loading, user, welcomeSent, showGate]);
+  }, [pathname, isAuthEntryRoute, loading, eligibleLoading, user, eligible, showGate]);
 
   const handleSetPassword = useCallback(async () => {
     setError(null);
@@ -67,25 +107,17 @@ export function PasswordOnboardingGate({ children }: { children: React.ReactNode
         setError(upErr.message);
         return;
       }
-      const email = user?.email?.trim();
-      if (email) {
-        addEmailWithPassword(email);
-        const pr = await fetch("/api/auth/password-set", { method: "POST", credentials: "include" });
-        if (!pr.ok) {
-          const pb = await pr.json().catch(() => ({}));
-          setError(typeof pb?.error === "string" ? pb.error : "Could not save password hint.");
-          return;
-        }
-      }
-      const wr = await fetch("/api/auth/welcome-shown", { method: "POST", credentials: "include" });
-      const wb = await wr.json().catch(() => ({}));
-      console.log("[PasswordOnboarding] welcome-shown after set password", wr.status, wb);
-      if (!wr.ok) {
-        setError(typeof wb?.error === "string" ? wb.error : "Couldn’t finish setup. Try again.");
+      const pr = await fetch("/api/auth/password-set", { method: "POST", credentials: "include" });
+      if (!pr.ok) {
+        const pb = await pr.json().catch(() => ({}));
+        setError(typeof pb?.error === "string" ? pb.error : "Could not save password to your profile.");
         return;
       }
+      const email = user?.email?.trim();
+      if (email) addEmailWithPassword(email);
       setPassword("");
       setConfirm("");
+      setEligible(false);
       const snap = await refresh();
       console.log("[PasswordOnboarding] refresh() after set password", { welcomeSent: snap.welcomeSent });
       router.replace("/");
@@ -100,13 +132,19 @@ export function PasswordOnboardingGate({ children }: { children: React.ReactNode
     setError(null);
     setSkipLoading(true);
     try {
-      const res = await fetch("/api/auth/welcome-shown", { method: "POST", credentials: "include" });
+      const res = await fetch("/api/auth/welcome-shown", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skipPasswordOnboarding: true }),
+      });
       const body = await res.json().catch(() => ({}));
       console.log("[PasswordOnboarding] welcome-shown response (skip)", res.status, body);
       if (!res.ok) {
         setError(typeof body?.error === "string" ? body.error : "Couldn’t skip right now. Try again.");
         return;
       }
+      setEligible(false);
       const snap = await refresh();
       console.log("[PasswordOnboarding] refresh() after skip", { welcomeSent: snap.welcomeSent });
       router.replace("/");

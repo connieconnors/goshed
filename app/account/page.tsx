@@ -85,10 +85,9 @@ export default function AccountPage() {
         return;
       }
       if (user?.email) {
-        addEmailWithPassword(user.email);
         await fetch("/api/auth/password-set", { method: "POST", credentials: "include" });
+        addEmailWithPassword(user.email);
       }
-      await fetch("/api/auth/welcome-shown", { method: "POST", credentials: "include" });
       await refreshAuthSession();
       setNewPassword("");
       setConfirmPassword("");

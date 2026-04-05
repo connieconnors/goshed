@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+/** Exact match for PostgREST ilike (no wildcards). */
+function escapeIlikeExact(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
 /**
  * Check if an account with this email has set a password (so login can show password field).
  * Returns only { hasPassword: boolean } so we don't leak whether the email exists.
@@ -23,9 +28,10 @@ export async function GET(request: NextRequest) {
   );
 
   const { data, error } = await admin
-    .from("user_password_set")
-    .select("email")
-    .eq("email", email)
+    .from("users")
+    .select("has_password_set")
+    .ilike("email", escapeIlikeExact(email))
+    .eq("has_password_set", true)
     .limit(1)
     .maybeSingle();
 
@@ -34,5 +40,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ hasPassword: false });
   }
 
-  return NextResponse.json({ hasPassword: !!data });
+  return NextResponse.json({ hasPassword: data?.has_password_set === true });
 }
