@@ -20,8 +20,16 @@ export async function GET(request: NextRequest) {
   try {
     const url = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lng}&appid=${apiKey}&units=imperial&cnt=8`;
     const res = await fetch(url);
+    if (!res.ok) {
+      return NextResponse.json({ rain_next_24h: false });
+    }
     const data = (await res.json()) as {
-      list?: Array<{ weather?: Array<{ main: string }> }>;
+      list?: Array<{
+        weather?: Array<{ main: string }>;
+        /** Probability of precipitation, 0–1 */
+        pop?: number;
+        rain?: { "3h"?: number };
+      }>;
       cod?: number | string;
     };
 
@@ -30,14 +38,20 @@ export async function GET(request: NextRequest) {
     }
 
     const list = data.list ?? [];
-    const rainInNext24h = list.some((entry) =>
-      (entry.weather ?? []).some(
+    // OpenWeather "main" alone is noisy (e.g. Drizzle on low-chance slots). Prefer
+    // modeled precip volume + probability so curb advice matches what people call "rain."
+    const rainInNext24h = list.some((entry) => {
+      const rainMm = entry.rain?.["3h"] ?? 0;
+      if (rainMm > 0) return true;
+      const pop = typeof entry.pop === "number" ? entry.pop : 0;
+      if (pop < 0.35) return false;
+      return (entry.weather ?? []).some(
         (w) =>
           w.main === "Rain" ||
           w.main === "Drizzle" ||
           w.main === "Thunderstorm"
-      )
-    );
+      );
+    });
 
     return NextResponse.json({ rain_next_24h: rainInNext24h });
   } catch {
