@@ -106,7 +106,9 @@ export default function ShedPage() {
     return () => {
       cancelled = true;
     };
-  }, [router, sessionLoading, sessionUser]);
+    // Use stable user id — `sessionUser` object identity can churn (e.g. auth context)
+    // and refetching the full list would overwrite optimistic clears mid-flight.
+  }, [router, sessionLoading, sessionUser?.id]);
 
   const { bucketMap, clearedItems, buckets } = useMemo(() => {
     const map: Record<BucketId, ShedItem[]> = {
@@ -117,7 +119,7 @@ export default function ShedPage() {
     };
     const cleared: ShedItem[] = [];
     for (const item of items) {
-      if (item.status === "cleared") {
+      if (String(item.status ?? "").trim().toLowerCase() === "cleared") {
         cleared.push(item);
         continue;
       }
@@ -156,18 +158,21 @@ export default function ShedPage() {
         return;
       }
 
-      const data = (await res.json().catch(() => null)) as {
-        cleared_at?: string | null;
-        status?: string;
-      } | null;
-      if (!data || typeof data !== "object") {
-        console.error("[shed] clear PATCH ok but missing/invalid JSON body");
-        setActiveSwipeItemId(null);
-        return;
+      const rawBody = await res.text().catch(() => "");
+      let nextClearedAt = clearedAt;
+      try {
+        if (rawBody.trim()) {
+          const data = JSON.parse(rawBody) as { cleared_at?: string | null; status?: string };
+          console.log("[shed] clear PATCH ok body:", data);
+          if (typeof data.cleared_at === "string" && data.cleared_at.trim()) {
+            nextClearedAt = data.cleared_at.trim();
+          }
+        } else {
+          console.warn("[shed] clear PATCH ok but empty body — using client cleared_at");
+        }
+      } catch (e) {
+        console.warn("[shed] clear PATCH ok but JSON parse failed; still moving item to Cleared", e);
       }
-
-      const nextClearedAt =
-        typeof data.cleared_at === "string" && data.cleared_at.trim() ? data.cleared_at : clearedAt;
 
       setItems((prev) =>
         prev.map((it) =>
