@@ -48,7 +48,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Missing id" }, { status: 400 });
   }
 
-  let body: { status?: string; recommendation?: string };
+  let body: { status?: string; recommendation?: string; cleared_at?: string | null };
   try {
     body = await request.json();
   } catch {
@@ -65,7 +65,10 @@ export async function PATCH(
     updates.cleared_at = null;
   } else if (body.status === "cleared") {
     updates.status = "cleared";
-    updates.cleared_at = new Date().toISOString();
+    const raw = body.cleared_at;
+    const fromClient =
+      typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
+    updates.cleared_at = fromClient ?? new Date().toISOString();
   }
   if (body.recommendation != null && validRec.includes(body.recommendation)) updates.recommendation = body.recommendation;
 
@@ -82,6 +85,7 @@ export async function PATCH(
     .single();
 
   if (error) {
+    console.error("[PATCH /api/items/[id]] supabase update error:", error.message, { id, updatesKeys: Object.keys(updates) });
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
   if (!data) {
