@@ -66,7 +66,7 @@ export default function ShedPage() {
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
-  const [clearedExpanded, setClearedExpanded] = useState(false);
+  const [clearedExpanded, setClearedExpanded] = useState(true);
   const [activeSwipeItemId, setActiveSwipeItemId] = useState<string | null>(null);
   const [clearingItemId, setClearingItemId] = useState<string | null>(null);
   const touchStartXRef = useRef(0);
@@ -134,7 +134,7 @@ export default function ShedPage() {
   }, [items]);
 
   const clearItem = async (itemId: string) => {
-    if (clearingItemId) return;
+    if (clearingItemId != null) return;
     setClearingItemId(itemId);
     const clearedAt = new Date().toISOString();
     try {
@@ -222,39 +222,15 @@ export default function ShedPage() {
             position: "relative",
           }}
         >
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              void clearItem(item.id);
-            }}
-            disabled={isClearing}
-            style={{
-              position: "absolute",
-              top: 0,
-              right: 0,
-              width: "72px",
-              height: "72px",
-              border: "none",
-              background: "#9f6c69",
-              color: "var(--white)",
-              fontSize: "11px",
-              fontWeight: 600,
-              fontFamily: "var(--font-body)",
-              transform: isOpen ? "translateX(0)" : "translateX(100%)",
-              transition: "transform 0.18s ease",
-              cursor: isClearing ? "not-allowed" : "pointer",
-              opacity: isClearing ? 0.75 : 1,
-            }}
-          >
-            {isClearing ? "..." : "Cleared ✓"}
-          </button>
+          {/* Slide layer first so the action button (after it) stays on top for hit-testing */}
           <div
             style={{
               width: "72px",
               height: "72px",
               transform: isOpen ? "translateX(-72px)" : "translateX(0)",
               transition: "transform 0.18s ease",
+              position: "relative",
+              zIndex: 1,
             }}
           >
             {item.photo_url ? (
@@ -282,6 +258,35 @@ export default function ShedPage() {
               </div>
             )}
           </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              void clearItem(item.id);
+            }}
+            disabled={isClearing}
+            style={{
+              position: "absolute",
+              top: 0,
+              right: 0,
+              width: "72px",
+              height: "72px",
+              border: "none",
+              background: "#9f6c69",
+              color: "var(--white)",
+              fontSize: "11px",
+              fontWeight: 600,
+              fontFamily: "var(--font-body)",
+              transform: isOpen ? "translateX(0)" : "translateX(100%)",
+              transition: "transform 0.18s ease",
+              cursor: isClearing ? "not-allowed" : "pointer",
+              opacity: isClearing ? 0.75 : 1,
+              zIndex: 2,
+              touchAction: "manipulation",
+            }}
+          >
+            {isClearing ? "..." : "Cleared ✓"}
+          </button>
         </div>
         <p
           className="goshed-pile-chip-label"
@@ -492,17 +497,8 @@ export default function ShedPage() {
                     {clearedItems.length}
                   </span>
                 </div>
-                <span
-                  aria-hidden
-                  style={{
-                    fontSize: "12px",
-                    color: "var(--ink-soft)",
-                    transform: clearedExpanded ? "rotate(180deg)" : "rotate(0deg)",
-                    transition: "transform 0.15s ease",
-                    lineHeight: 1,
-                  }}
-                >
-                  ▼
+                <span aria-hidden style={{ fontSize: "12px", color: "var(--ink-soft)", lineHeight: 1 }}>
+                  {clearedExpanded ? "▲" : "▼"}
                 </span>
               </button>
               {clearedExpanded ? (
