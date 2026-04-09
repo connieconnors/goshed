@@ -15,6 +15,7 @@ type ItemDetail = {
   status: string;
   notes: string | null;
   created_at: string;
+  cleared_at?: string | null;
 };
 
 const BADGE_LABELS: Record<string, string> = {
@@ -30,7 +31,8 @@ const REC_OPTIONS = ["sell", "donate", "gift", "curb", "keep", "repurpose"] as c
 
 function normalizeStatus(s: unknown): string {
   const v = typeof s === "string" ? s.toLowerCase() : "";
-  return v === "done" ? "done" : "pending";
+  if (v === "done" || v === "cleared") return v;
+  return "pending";
 }
 
 export default function ItemDetailPage() {
@@ -81,7 +83,7 @@ export default function ItemDetailPage() {
   }, [id, router]);
 
   const patchItem = async (
-    body: { recommendation?: string; status?: string },
+    body: { recommendation?: string; status?: string; cleared_at?: string },
     onSuccess?: (data: ItemDetail) => void
   ) => {
     if (!id || updating) return;
@@ -98,6 +100,28 @@ export default function ItemDetailPage() {
       const normalized = { ...data, status: normalizeStatus(data.status) };
       setItem(normalized);
       onSuccess?.(normalized);
+    } catch {
+      // Keep current item state on error
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleMarkCleared = async () => {
+    if (!id || updating || item?.status === "cleared") return;
+    setUpdating(true);
+    try {
+      const res = await fetch(`/api/items/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          status: "cleared",
+          cleared_at: new Date().toISOString(),
+        }),
+      });
+      if (!res.ok) throw new Error("Update failed");
+      router.push("/dashboard");
     } catch {
       // Keep current item state on error
     } finally {
@@ -270,6 +294,30 @@ export default function ItemDetailPage() {
               Save change
             </button>
           )}
+          {item.status !== "cleared" ? (
+            <button
+              type="button"
+              disabled={updating}
+              onClick={handleMarkCleared}
+              style={{
+                width: "100%",
+                padding: "10px 16px",
+                fontSize: "13px",
+                fontWeight: 600,
+                border: "1px solid var(--soft)",
+                borderRadius: "10px",
+                background: "var(--surface)",
+                color: "var(--ink-soft)",
+                cursor: updating ? "not-allowed" : "pointer",
+                opacity: updating ? 0.7 : 1,
+                marginTop:
+                  draftRecommendation != null && draftRecommendation !== item.recommendation ? 0 : "12px",
+                marginBottom: "12px",
+              }}
+            >
+              Mark as cleared ✓
+            </button>
+          ) : null}
           {!confirmDelete ? (
             <p style={{ textAlign: "center", marginTop: "12px" }}>
               <button

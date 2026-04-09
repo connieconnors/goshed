@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuthSession } from "@/lib/auth-session-context";
@@ -15,6 +15,7 @@ type ShedItem = {
   value_high: number;
   status: string;
   created_at: string;
+  cleared_at?: string | null;
 };
 
 const BUCKET_ORDER = ["sell", "donate", "gift", "curb"] as const;
@@ -47,6 +48,17 @@ function sellPileValueRange(sellItems: ShedItem[]): string | null {
   return `${formatCurrency(lowSum)}–${formatCurrency(highSum)}`;
 }
 
+function formatClearedLabel(iso: string | null | undefined, fallbackIso: string): string {
+  const raw = iso && String(iso).trim() ? iso : fallbackIso;
+  try {
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return "";
+    return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(d);
+  } catch {
+    return "";
+  }
+}
+
 export default function ShedPage() {
   const router = useRouter();
   const { user: sessionUser, loading: sessionLoading } = useAuthSession();
@@ -54,6 +66,13 @@ export default function ShedPage() {
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [clearedExpanded, setClearedExpanded] = useState(false);
+  const [activeSwipeItemId, setActiveSwipeItemId] = useState<string | null>(null);
+  const [clearingItemId, setClearingItemId] = useState<string | null>(null);
+  const touchStartXRef = useRef(0);
+  const touchStartYRef = useRef(0);
+  const touchItemIdRef = useRef<string | null>(null);
+  const suppressTapItemIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -89,24 +108,196 @@ export default function ShedPage() {
     };
   }, [router, sessionLoading, sessionUser]);
 
-  const buckets = useMemo(() => {
+  const { bucketMap, clearedItems, buckets } = useMemo(() => {
     const map: Record<BucketId, ShedItem[]> = {
       sell: [],
       donate: [],
       gift: [],
       curb: [],
     };
+    const cleared: ShedItem[] = [];
     for (const item of items) {
+      if (item.status === "cleared") {
+        cleared.push(item);
+        continue;
+      }
       const r = item.recommendation as string;
       if (r === "sell" || r === "donate" || r === "gift" || r === "curb") {
         map[r as BucketId].push(item);
       }
     }
-    return BUCKET_ORDER.filter((id) => map[id].length > 0).map((id) => ({
+    const bucketList = BUCKET_ORDER.filter((id) => map[id].length > 0).map((id) => ({
       id,
       items: map[id],
     }));
+    return { bucketMap: map, clearedItems: cleared, buckets: bucketList };
   }, [items]);
+
+  const clearItem = async (itemId: string) => {
+    if (clearingItemId) return;
+    setClearingItemId(itemId);
+    const clearedAt = new Date().toISOString();
+    try {
+      const res = await fetch(`/api/items/${itemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ status: "cleared", cleared_at: clearedAt }),
+      });
+      if (!res.ok) throw new Error("Failed to clear");
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === itemId ? { ...it, status: "cleared", cleared_at: clearedAt } : it
+        )
+      );
+      setActiveSwipeItemId(null);
+    } catch (err) {
+      console.error("[shed] clear item failed:", err);
+    } finally {
+      setClearingItemId(null);
+    }
+  };
+
+  const renderSwipeTile = (item: ShedItem) => {
+    const isOpen = activeSwipeItemId === item.id;
+    const isClearing = clearingItemId === item.id;
+
+    return (
+      <div
+        key={item.id}
+        role="listitem"
+        style={{
+          width: "72px",
+          flexShrink: 0,
+          color: "inherit",
+          cursor: "pointer",
+          WebkitTapHighlightColor: "transparent",
+        }}
+        onTouchStart={(e) => {
+          const t = e.touches[0];
+          if (!t) return;
+          touchStartXRef.current = t.clientX;
+          touchStartYRef.current = t.clientY;
+          touchItemIdRef.current = item.id;
+        }}
+        onTouchEnd={(e) => {
+          const t = e.changedTouches[0];
+          if (!t || touchItemIdRef.current !== item.id) return;
+          const dx = t.clientX - touchStartXRef.current;
+          const dy = t.clientY - touchStartYRef.current;
+          touchItemIdRef.current = null;
+          if (Math.abs(dx) <= Math.abs(dy)) return;
+          if (dx < -60) {
+            setActiveSwipeItemId(item.id);
+            suppressTapItemIdRef.current = item.id;
+            return;
+          }
+          if (dx > 60) {
+            setActiveSwipeItemId(null);
+            suppressTapItemIdRef.current = item.id;
+          }
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (suppressTapItemIdRef.current === item.id) {
+            suppressTapItemIdRef.current = null;
+            e.preventDefault();
+            return;
+          }
+          if (isOpen) {
+            setActiveSwipeItemId(null);
+            e.preventDefault();
+            return;
+          }
+          router.push(`/item/${item.id}`);
+        }}
+      >
+        <div
+          style={{
+            width: "72px",
+            height: "72px",
+            borderRadius: "6px",
+            background: "var(--surface)",
+            overflow: "hidden",
+            position: "relative",
+          }}
+        >
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              void clearItem(item.id);
+            }}
+            disabled={isClearing}
+            style={{
+              position: "absolute",
+              top: 0,
+              right: 0,
+              width: "72px",
+              height: "72px",
+              border: "none",
+              background: "#9f6c69",
+              color: "var(--white)",
+              fontSize: "11px",
+              fontWeight: 600,
+              fontFamily: "var(--font-body)",
+              transform: isOpen ? "translateX(0)" : "translateX(100%)",
+              transition: "transform 0.18s ease",
+              cursor: isClearing ? "not-allowed" : "pointer",
+              opacity: isClearing ? 0.75 : 1,
+            }}
+          >
+            {isClearing ? "..." : "Cleared ✓"}
+          </button>
+          <div
+            style={{
+              width: "72px",
+              height: "72px",
+              transform: isOpen ? "translateX(-72px)" : "translateX(0)",
+              transition: "transform 0.18s ease",
+            }}
+          >
+            {item.photo_url ? (
+              <img
+                src={item.photo_url}
+                alt=""
+                draggable={false}
+                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "8px",
+                  color: "var(--ink-soft)",
+                  textAlign: "center",
+                  padding: "4px",
+                }}
+              >
+                —
+              </div>
+            )}
+          </div>
+        </div>
+        <p
+          className="goshed-pile-chip-label"
+          style={{
+            fontSize: "9px",
+            color: "var(--ink-soft)",
+            margin: "3px 0 0",
+            lineHeight: 1.25,
+            fontFamily: "var(--font-body)",
+          }}
+        >
+          {item.item_label}
+        </p>
+      </div>
+    );
+  };
 
   if (loading) {
     return (
@@ -117,7 +308,10 @@ export default function ShedPage() {
   }
 
   return (
-    <main style={{ minHeight: "100vh", background: "var(--bg)", paddingBottom: "1.5rem" }}>
+    <main
+      style={{ minHeight: "100vh", background: "var(--bg)", paddingBottom: "1.5rem" }}
+      onClick={() => setActiveSwipeItemId(null)}
+    >
       <style>{`
         .goshed-piles-row {
           display: flex;
@@ -175,7 +369,9 @@ export default function ShedPage() {
         </h1>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "10px", paddingBottom: "0.5rem" }}>
-          {buckets.map(({ id, items: pile }) => {
+          {(["sell", "donate", "gift"] as const).map((id) => {
+            const pile = bucketMap[id];
+            if (pile.length === 0) return null;
             const sellRange = id === "sell" ? sellPileValueRange(pile) : null;
             return (
               <article
@@ -232,75 +428,215 @@ export default function ShedPage() {
                   ) : null}
                 </div>
                 <div className="goshed-piles-row" role="list">
-                  {pile.map((item) => (
-                    <Link
-                      key={item.id}
-                      href={`/item/${item.id}`}
-                      role="listitem"
-                      style={{
-                        width: "72px",
-                        flexShrink: 0,
-                        textDecoration: "none",
-                        color: "inherit",
-                        cursor: "pointer",
-                        WebkitTapHighlightColor: "transparent",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: "72px",
-                          height: "72px",
-                          borderRadius: "6px",
-                          background: "var(--surface)",
-                          overflow: "hidden",
-                        }}
-                      >
-                        {item.photo_url ? (
-                          <img
-                            src={item.photo_url}
-                            alt=""
-                            draggable={false}
-                            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                          />
-                        ) : (
-                          <div
-                            style={{
-                              width: "100%",
-                              height: "100%",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              fontSize: "8px",
-                              color: "var(--ink-soft)",
-                              textAlign: "center",
-                              padding: "4px",
-                            }}
-                          >
-                            —
-                          </div>
-                        )}
-                      </div>
-                      <p
-                        className="goshed-pile-chip-label"
-                        style={{
-                          fontSize: "9px",
-                          color: "var(--ink-soft)",
-                          margin: "3px 0 0",
-                          lineHeight: 1.25,
-                          fontFamily: "var(--font-body)",
-                        }}
-                      >
-                        {item.item_label}
-                      </p>
-                    </Link>
-                  ))}
+                  {pile.map((item) => renderSwipeTile(item))}
                 </div>
               </article>
             );
           })}
+
+          {clearedItems.length > 0 ? (
+            <article
+              style={{
+                background: "var(--white)",
+                borderRadius: "12px",
+                border: "1px solid var(--surface2)",
+                overflow: "hidden",
+              }}
+            >
+              <button
+                type="button"
+                aria-expanded={clearedExpanded}
+                onClick={() => setClearedExpanded((e) => !e)}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "0.625rem 0.875rem",
+                  border: "none",
+                  borderBottom: clearedExpanded ? "1px solid var(--surface2)" : "none",
+                  background: "transparent",
+                  cursor: "pointer",
+                  fontFamily: "var(--font-body)",
+                  WebkitTapHighlightColor: "transparent",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "row",
+                    alignItems: "baseline",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "14px",
+                      color: "var(--ink-soft)",
+                      letterSpacing: "-0.01em",
+                      fontFamily: "var(--font-body)",
+                      fontWeight: 500,
+                    }}
+                  >
+                    Cleared
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      color: "var(--ink-soft)",
+                      marginLeft: "0.375rem",
+                      fontFamily: "var(--font-body)",
+                    }}
+                  >
+                    {clearedItems.length}
+                  </span>
+                </div>
+                <span
+                  aria-hidden
+                  style={{
+                    fontSize: "12px",
+                    color: "var(--ink-soft)",
+                    transform: clearedExpanded ? "rotate(180deg)" : "rotate(0deg)",
+                    transition: "transform 0.15s ease",
+                    lineHeight: 1,
+                  }}
+                >
+                  ▼
+                </span>
+              </button>
+              {clearedExpanded ? (
+                <div className="goshed-piles-row" role="list" style={{ opacity: 0.6 }}>
+                  {clearedItems.map((item) => {
+                    const dateStr = formatClearedLabel(item.cleared_at, item.created_at);
+                    return (
+                      <div
+                        key={item.id}
+                        role="listitem"
+                        style={{
+                          width: "72px",
+                          flexShrink: 0,
+                          color: "inherit",
+                          cursor: "default",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: "72px",
+                            height: "72px",
+                            borderRadius: "6px",
+                            background: "var(--surface)",
+                            overflow: "hidden",
+                          }}
+                        >
+                          {item.photo_url ? (
+                            <img
+                              src={item.photo_url}
+                              alt=""
+                              draggable={false}
+                              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                            />
+                          ) : (
+                            <div
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                fontSize: "8px",
+                                color: "var(--ink-soft)",
+                                textAlign: "center",
+                                padding: "4px",
+                              }}
+                            >
+                              —
+                            </div>
+                          )}
+                        </div>
+                        <p
+                          className="goshed-pile-chip-label"
+                          style={{
+                            fontSize: "9px",
+                            color: "var(--ink-soft)",
+                            margin: "3px 0 0",
+                            lineHeight: 1.25,
+                            fontFamily: "var(--font-body)",
+                          }}
+                        >
+                          {item.item_label}
+                        </p>
+                        {dateStr ? (
+                          <p
+                            style={{
+                              fontSize: "8px",
+                              color: "var(--ink-soft)",
+                              margin: "2px 0 0",
+                              lineHeight: 1.2,
+                              fontFamily: "var(--font-body)",
+                            }}
+                          >
+                            cleared {dateStr}
+                          </p>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </article>
+          ) : null}
+
+          {bucketMap.curb.length > 0 ? (
+            <article
+              key="curb"
+              style={{
+                background: "var(--white)",
+                borderRadius: "12px",
+                border: "1px solid var(--surface2)",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "row",
+                  alignItems: "baseline",
+                  flexWrap: "wrap",
+                  padding: "0.625rem 0.875rem",
+                  borderBottom: "1px solid var(--surface2)",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: "14px",
+                    color: "var(--ink)",
+                    letterSpacing: "-0.01em",
+                    fontFamily: "var(--font-body)",
+                    fontWeight: 500,
+                  }}
+                >
+                  {BUCKET_TITLES.curb}
+                </span>
+                <span
+                  style={{
+                    fontSize: "11px",
+                    color: "var(--ink-soft)",
+                    marginLeft: "0.375rem",
+                    fontFamily: "var(--font-body)",
+                  }}
+                >
+                  {bucketMap.curb.length}
+                </span>
+              </div>
+              <div className="goshed-piles-row" role="list">
+                {bucketMap.curb.map((item) => renderSwipeTile(item))}
+              </div>
+            </article>
+          ) : null}
         </div>
 
-        {buckets.length === 0 ? (
+        {buckets.length === 0 && clearedItems.length === 0 ? (
           <p style={{ textAlign: "center", color: "var(--ink-soft)", fontSize: "14px", marginTop: "8px", fontFamily: "var(--font-body)" }}>
             No items in these piles yet. Snap a photo on the home page to get started.
           </p>

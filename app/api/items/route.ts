@@ -10,7 +10,7 @@ export async function GET() {
   }
   const { data, error } = await supabase
     .from("items")
-    .select("id, photo_url, item_label, recommendation, value_range_raw, value_low, value_high, status, created_at")
+    .select("id, photo_url, item_label, recommendation, value_range_raw, value_low, value_high, status, created_at, cleared_at")
     .eq("user_id", user.id)
     .eq("hidden", false)
     .order("created_at", { ascending: false });

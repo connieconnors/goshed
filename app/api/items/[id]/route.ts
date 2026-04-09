@@ -18,7 +18,7 @@ export async function GET(
 
   const { data, error } = await supabase
     .from("items")
-    .select("id, photo_url, item_label, recommendation, value_range_raw, value_low, value_high, status, notes, created_at")
+    .select("id, photo_url, item_label, recommendation, value_range_raw, value_low, value_high, status, notes, created_at, cleared_at")
     .eq("id", id)
     .eq("user_id", user.id)
     .single();
@@ -56,9 +56,17 @@ export async function PATCH(
   }
 
   const validRec = ["sell", "donate", "gift", "curb", "keep", "repurpose"];
-  const updates: { status?: string; recommendation?: string } = {};
-  if (body.status === "done") updates.status = "done";
-  else if (body.status === "pending") updates.status = "pending";
+  const updates: { status?: string; recommendation?: string; cleared_at?: string | null } = {};
+  if (body.status === "done") {
+    updates.status = "done";
+    updates.cleared_at = null;
+  } else if (body.status === "pending") {
+    updates.status = "pending";
+    updates.cleared_at = null;
+  } else if (body.status === "cleared") {
+    updates.status = "cleared";
+    updates.cleared_at = new Date().toISOString();
+  }
   if (body.recommendation != null && validRec.includes(body.recommendation)) updates.recommendation = body.recommendation;
 
   if (Object.keys(updates).length === 0) {
@@ -70,7 +78,7 @@ export async function PATCH(
     .update(updates)
     .eq("id", id)
     .eq("user_id", user.id)
-    .select("id, photo_url, item_label, recommendation, value_range_raw, value_low, value_high, status, notes, created_at")
+    .select("id, photo_url, item_label, recommendation, value_range_raw, value_low, value_high, status, notes, created_at, cleared_at")
     .single();
 
   if (error) {
