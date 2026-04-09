@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuthSession } from "@/lib/auth-session-context";
@@ -59,6 +59,70 @@ function formatClearedLabel(iso: string | null | undefined, fallbackIso: string)
   }
 }
 
+function PileItemLink({ item }: { item: ShedItem }) {
+  return (
+    <Link
+      href={`/item/${item.id}`}
+      role="listitem"
+      style={{
+        width: "72px",
+        flexShrink: 0,
+        textDecoration: "none",
+        color: "inherit",
+        cursor: "pointer",
+        WebkitTapHighlightColor: "transparent",
+      }}
+    >
+      <div
+        style={{
+          width: "72px",
+          height: "72px",
+          borderRadius: "6px",
+          background: "var(--surface)",
+          overflow: "hidden",
+        }}
+      >
+        {item.photo_url ? (
+          <img
+            src={item.photo_url}
+            alt=""
+            draggable={false}
+            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+          />
+        ) : (
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "8px",
+              color: "var(--ink-soft)",
+              textAlign: "center",
+              padding: "4px",
+            }}
+          >
+            —
+          </div>
+        )}
+      </div>
+      <p
+        className="goshed-pile-chip-label"
+        style={{
+          fontSize: "9px",
+          color: "var(--ink-soft)",
+          margin: "3px 0 0",
+          lineHeight: 1.25,
+          fontFamily: "var(--font-body)",
+        }}
+      >
+        {item.item_label}
+      </p>
+    </Link>
+  );
+}
+
 export default function ShedPage() {
   const router = useRouter();
   const { user: sessionUser, loading: sessionLoading } = useAuthSession();
@@ -67,12 +131,6 @@ export default function ShedPage() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [clearedExpanded, setClearedExpanded] = useState(true);
-  const [activeSwipeItemId, setActiveSwipeItemId] = useState<string | null>(null);
-  const [clearingItemId, setClearingItemId] = useState<string | null>(null);
-  const touchStartXRef = useRef(0);
-  const touchStartYRef = useRef(0);
-  const touchItemIdRef = useRef<string | null>(null);
-  const suppressTapItemIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -135,208 +193,6 @@ export default function ShedPage() {
     return { bucketMap: map, clearedItems: cleared, buckets: bucketList };
   }, [items]);
 
-  const clearItem = async (itemId: string) => {
-    // Only ignore double-submit for the *same* tile — a global lock blocked clearing
-    // item B while item A's PATCH was still in flight (no log, UI looked "stuck").
-    if (clearingItemId === itemId) return;
-    setClearingItemId(itemId);
-    const clearedAt = new Date().toISOString();
-    console.log("[shed] clearItem start PATCH for", itemId);
-    try {
-      const res = await fetch(`/api/items/${itemId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ status: "cleared", cleared_at: clearedAt }),
-      });
-      console.log("[shed] clear PATCH response status:", res.status, "item:", itemId);
-
-      if (!res.ok) {
-        const errText = await res.text().catch(() => "");
-        console.error("[shed] clear PATCH failed body:", errText);
-        setActiveSwipeItemId(null);
-        return;
-      }
-
-      const rawBody = await res.text().catch(() => "");
-      let nextClearedAt = clearedAt;
-      try {
-        if (rawBody.trim()) {
-          const data = JSON.parse(rawBody) as { cleared_at?: string | null; status?: string };
-          console.log("[shed] clear PATCH ok body:", data);
-          if (typeof data.cleared_at === "string" && data.cleared_at.trim()) {
-            nextClearedAt = data.cleared_at.trim();
-          }
-        } else {
-          console.warn("[shed] clear PATCH ok but empty body — using client cleared_at");
-        }
-      } catch (e) {
-        console.warn("[shed] clear PATCH ok but JSON parse failed; still moving item to Cleared", e);
-      }
-
-      setItems((prev) =>
-        prev.map((it) =>
-          it.id === itemId ? { ...it, status: "cleared", cleared_at: nextClearedAt } : it
-        )
-      );
-      setActiveSwipeItemId(null);
-    } catch (err) {
-      console.error("[shed] clear item network/error:", err);
-      setActiveSwipeItemId(null);
-    } finally {
-      setClearingItemId(null);
-    }
-  };
-
-  const renderSwipeTile = (item: ShedItem) => {
-    const isOpen = activeSwipeItemId === item.id;
-    const isClearing = clearingItemId === item.id;
-
-    return (
-      <div
-        key={item.id}
-        role="listitem"
-        style={{
-          width: "72px",
-          flexShrink: 0,
-          color: "inherit",
-          cursor: "pointer",
-          WebkitTapHighlightColor: "transparent",
-        }}
-        onTouchStart={(e) => {
-          const t = e.touches[0];
-          if (!t) return;
-          touchStartXRef.current = t.clientX;
-          touchStartYRef.current = t.clientY;
-          touchItemIdRef.current = item.id;
-        }}
-        onTouchEnd={(e) => {
-          const t = e.changedTouches[0];
-          if (!t || touchItemIdRef.current !== item.id) return;
-          const dx = t.clientX - touchStartXRef.current;
-          const dy = t.clientY - touchStartYRef.current;
-          touchItemIdRef.current = null;
-          if (Math.abs(dx) <= Math.abs(dy)) return;
-          if (dx < -60) {
-            setActiveSwipeItemId(item.id);
-            suppressTapItemIdRef.current = item.id;
-            return;
-          }
-          if (dx > 60) {
-            setActiveSwipeItemId(null);
-            suppressTapItemIdRef.current = item.id;
-          }
-        }}
-        onClick={(e) => {
-          e.stopPropagation();
-          if (suppressTapItemIdRef.current === item.id) {
-            suppressTapItemIdRef.current = null;
-            e.preventDefault();
-            return;
-          }
-          if (isOpen) {
-            setActiveSwipeItemId(null);
-            e.preventDefault();
-            return;
-          }
-          router.push(`/item/${item.id}`);
-        }}
-      >
-        <div
-          style={{
-            width: "72px",
-            height: "72px",
-            borderRadius: "6px",
-            background: "var(--surface)",
-            overflow: "hidden",
-            position: "relative",
-          }}
-        >
-          {/* Slide layer first so the action button (after it) stays on top for hit-testing */}
-          <div
-            style={{
-              width: "72px",
-              height: "72px",
-              transform: isOpen ? "translateX(-72px)" : "translateX(0)",
-              transition: "transform 0.18s ease",
-              position: "relative",
-              zIndex: 1,
-            }}
-          >
-            {item.photo_url ? (
-              <img
-                src={item.photo_url}
-                alt=""
-                draggable={false}
-                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-              />
-            ) : (
-              <div
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: "8px",
-                  color: "var(--ink-soft)",
-                  textAlign: "center",
-                  padding: "4px",
-                }}
-              >
-                —
-              </div>
-            )}
-          </div>
-          <button
-            type="button"
-            onPointerDown={(e) => e.stopPropagation()}
-            onTouchStart={(e) => e.stopPropagation()}
-            onTouchEnd={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              void clearItem(item.id);
-            }}
-            disabled={isClearing}
-            style={{
-              position: "absolute",
-              top: 0,
-              right: 0,
-              width: "72px",
-              height: "72px",
-              border: "none",
-              background: "#9f6c69",
-              color: "var(--white)",
-              fontSize: "11px",
-              fontWeight: 600,
-              fontFamily: "var(--font-body)",
-              transform: isOpen ? "translateX(0)" : "translateX(100%)",
-              transition: "transform 0.18s ease",
-              cursor: isClearing ? "not-allowed" : "pointer",
-              opacity: isClearing ? 0.75 : 1,
-              zIndex: 2,
-              touchAction: "manipulation",
-            }}
-          >
-            {isClearing ? "..." : "Cleared ✓"}
-          </button>
-        </div>
-        <p
-          className="goshed-pile-chip-label"
-          style={{
-            fontSize: "9px",
-            color: "var(--ink-soft)",
-            margin: "3px 0 0",
-            lineHeight: 1.25,
-            fontFamily: "var(--font-body)",
-          }}
-        >
-          {item.item_label}
-        </p>
-      </div>
-    );
-  };
-
   if (loading) {
     return (
       <main style={{ minHeight: "100vh", background: "var(--bg)", padding: "48px 24px", display: "flex", justifyContent: "center", alignItems: "center" }}>
@@ -346,10 +202,7 @@ export default function ShedPage() {
   }
 
   return (
-    <main
-      style={{ minHeight: "100vh", background: "var(--bg)", paddingBottom: "1.5rem" }}
-      onClick={() => setActiveSwipeItemId(null)}
-    >
+    <main style={{ minHeight: "100vh", background: "var(--bg)", paddingBottom: "1.5rem" }}>
       <style>{`
         .goshed-piles-row {
           display: flex;
@@ -466,7 +319,9 @@ export default function ShedPage() {
                   ) : null}
                 </div>
                 <div className="goshed-piles-row" role="list">
-                  {pile.map((item) => renderSwipeTile(item))}
+                  {pile.map((item) => (
+                    <PileItemLink key={item.id} item={item} />
+                  ))}
                 </div>
               </article>
             );
@@ -659,7 +514,9 @@ export default function ShedPage() {
                 </span>
               </div>
               <div className="goshed-piles-row" role="list">
-                {bucketMap.curb.map((item) => renderSwipeTile(item))}
+                {bucketMap.curb.map((item) => (
+                  <PileItemLink key={item.id} item={item} />
+                ))}
               </div>
             </article>
           ) : null}
