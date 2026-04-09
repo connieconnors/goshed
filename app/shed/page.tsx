@@ -134,9 +134,12 @@ export default function ShedPage() {
   }, [items]);
 
   const clearItem = async (itemId: string) => {
-    if (clearingItemId != null) return;
+    // Only ignore double-submit for the *same* tile — a global lock blocked clearing
+    // item B while item A's PATCH was still in flight (no log, UI looked "stuck").
+    if (clearingItemId === itemId) return;
     setClearingItemId(itemId);
     const clearedAt = new Date().toISOString();
+    console.log("[shed] clearItem start PATCH for", itemId);
     try {
       const res = await fetch(`/api/items/${itemId}`, {
         method: "PATCH",
@@ -144,15 +147,37 @@ export default function ShedPage() {
         credentials: "include",
         body: JSON.stringify({ status: "cleared", cleared_at: clearedAt }),
       });
-      if (!res.ok) throw new Error("Failed to clear");
+      console.log("[shed] clear PATCH response status:", res.status, "item:", itemId);
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        console.error("[shed] clear PATCH failed body:", errText);
+        setActiveSwipeItemId(null);
+        return;
+      }
+
+      const data = (await res.json().catch(() => null)) as {
+        cleared_at?: string | null;
+        status?: string;
+      } | null;
+      if (!data || typeof data !== "object") {
+        console.error("[shed] clear PATCH ok but missing/invalid JSON body");
+        setActiveSwipeItemId(null);
+        return;
+      }
+
+      const nextClearedAt =
+        typeof data.cleared_at === "string" && data.cleared_at.trim() ? data.cleared_at : clearedAt;
+
       setItems((prev) =>
         prev.map((it) =>
-          it.id === itemId ? { ...it, status: "cleared", cleared_at: clearedAt } : it
+          it.id === itemId ? { ...it, status: "cleared", cleared_at: nextClearedAt } : it
         )
       );
       setActiveSwipeItemId(null);
     } catch (err) {
-      console.error("[shed] clear item failed:", err);
+      console.error("[shed] clear item network/error:", err);
+      setActiveSwipeItemId(null);
     } finally {
       setClearingItemId(null);
     }
@@ -260,6 +285,9 @@ export default function ShedPage() {
           </div>
           <button
             type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchEnd={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               void clearItem(item.id);
