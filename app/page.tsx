@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useRef, useState, useEffect, useCallback, type CSSProperties } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuthSession } from '@/lib/auth-session-context';
@@ -163,6 +163,8 @@ function getDecisionTitle(id: RecommendResult['recommendation']): string {
 function HomeContent() {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
+  /** Same handler as main input; `capture` nudges phones to open the camera (used for “+ Add another item”). */
+  const addAnotherCameraInputRef = useRef<HTMLInputElement>(null);
   const refinementPhotoRef = useRef<HTMLInputElement>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -503,6 +505,39 @@ function HomeContent() {
     }
   };
 
+  /** After confirming a decision: clear the flow and open the device camera (capture) immediately. */
+  const handleAddAnotherItem = () => {
+    const cam = addAnotherCameraInputRef.current;
+    if (cam) cam.value = '';
+    // Keep .click() in the same synchronous user gesture as the tap (iOS); state clears right after.
+    cam?.click();
+
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(null);
+    setResult(null);
+    setError(null);
+    setRecommendResult(null);
+    setRecommendError(null);
+    setChosenDecision(null);
+    setContextualPlaces([]);
+    setPickupDonationPlaces([]);
+    setRainNext24h(null);
+    savedForItemRef.current = null;
+    savedItemIdRef.current = null;
+    lastSavedItemKey = null;
+    confirmedActionPromptRef.current = {};
+    setGiftConfirmationBeats(null);
+    setLoadingPhraseIndex(0);
+    setRefinementNote('');
+    setShowNoteInput(false);
+    if (refinementPhotoUrl) URL.revokeObjectURL(refinementPhotoUrl);
+    setRefinementPhotoUrl(null);
+    analysisImageDataUrlRef.current = null;
+    setLoading(false);
+    setRecommendLoading(false);
+    setDecisionJustConfirmed(false);
+  };
+
   const handlePaywallSuccess = useCallback(() => {
     setShowPaywallModal(false);
     const dataUrl = analysisImageDataUrlRef.current;
@@ -696,6 +731,22 @@ function HomeContent() {
     }
   };
 
+  /** Post-decision footer: identical typography and color for all three actions. */
+  const postDecisionFooterActionStyle: CSSProperties = {
+    fontSize: '13px',
+    fontWeight: 500,
+    color: 'var(--accent)',
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    textDecoration: 'none',
+    padding: 0,
+    display: 'inline-block',
+    marginBottom: '14px',
+    fontFamily: 'inherit',
+    lineHeight: 1.45,
+  };
+
   // Defer full UI until after mount so server and client render identical HTML and hydration never mismatches (e.g. with extensions that alter the DOM).
   if (!mounted) {
     return (
@@ -814,9 +865,19 @@ function HomeContent() {
           </div>
         </div>
 
-        {/* Photo zone */}
+        {/* Photo zone — no capture so users can choose camera or library from the sheet */}
         <input ref={inputRef} type="file" accept="image/*" onChange={handleFileChange}
           style={{ position: 'absolute', width: 0, height: 0, opacity: 0, pointerEvents: 'none' }} aria-hidden />
+        {/* Dedicated input so “+ Add another item” opens the camera directly on phones */}
+        <input
+          ref={addAnotherCameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handleFileChange}
+          style={{ position: 'absolute', width: 0, height: 0, opacity: 0, pointerEvents: 'none' }}
+          aria-hidden
+        />
         <div role="button" tabIndex={0} onClick={handleZoneClick}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleZoneClick(); } }}
           style={{ marginTop: '28px', background: 'var(--surface)', borderRadius: '20px', border: '1.5px dashed var(--soft)', height: '280px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', cursor: 'pointer', overflow: 'hidden', position: 'relative' }}>
@@ -1122,15 +1183,25 @@ function HomeContent() {
                         </ul>
                       </div>
                     )}
-                    <Link
-                      href="/shed"
-                      style={{ fontSize: '13px', color: 'var(--accent)', textDecoration: 'none', display: 'inline-block', marginBottom: '14px' }}
-                    >
+                    <button type="button" onClick={handleAddAnotherItem} style={postDecisionFooterActionStyle}>
+                      + Add another item
+                    </button>
+                    <br />
+                    <Link href="/shed" style={postDecisionFooterActionStyle}>
                       View your Shed →
                     </Link>
                     <br />
-                    <button onClick={() => { setChosenDecision(null); setGiftConfirmationBeats(null); setContextualPlaces([]); setPickupDonationPlaces([]); setRainNext24h(null); }}
-                      style={{ fontSize: '13px', color: 'var(--ink-soft)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setChosenDecision(null);
+                        setGiftConfirmationBeats(null);
+                        setContextualPlaces([]);
+                        setPickupDonationPlaces([]);
+                        setRainNext24h(null);
+                      }}
+                      style={postDecisionFooterActionStyle}
+                    >
                       ← Change my mind
                     </button>
                   </>
