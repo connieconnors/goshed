@@ -1,16 +1,18 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, Suspense, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import type { AuthResponse } from "@supabase/supabase-js";
+import Link from "next/link";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
 import { getEmailsWithPassword } from "@/lib/authPasswordHint";
+import { useAuthSession } from "@/lib/auth-session-context";
 
 const LAST_LOGIN_EMAIL_KEY = "goshed_last_login_email";
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user: sessionUser, loading: authSessionLoading } = useAuthSession();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [sent, setSent] = useState(false);
@@ -19,7 +21,8 @@ function LoginForm() {
   const [invalidPasswordRecovery, setInvalidPasswordRecovery] = useState(false);
   const [sending, setSending] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [checkingSession, setCheckingSession] = useState(true);
+  /** After timeout, show the sign-in form even if session fetch is still pending (avoid stuck UI). */
+  const [sessionWaitTimedOut, setSessionWaitTimedOut] = useState(false);
 
   const emailNorm = email.trim().toLowerCase();
   const [remoteHasPassword, setRemoteHasPassword] = useState(false);
@@ -48,54 +51,35 @@ function LoginForm() {
   }, []);
 
   useEffect(() => {
-    if (!mounted || typeof window === "undefined") return;
-    let cancelled = false;
+    if (!mounted) return;
     const slow = setTimeout(() => {
-      if (!cancelled) {
-        console.warn("[login] getSession still pending after 6s — showing form so UI is not stuck");
-        setCheckingSession(false);
-      }
+      setSessionWaitTimedOut(true);
+      console.warn("[login] auth session still loading after 6s — showing form so UI is not stuck");
     }, 6000);
-    let supabase: ReturnType<typeof createSupabaseBrowserClient>;
-    try {
-      supabase = createSupabaseBrowserClient();
-    } catch (e) {
-      clearTimeout(slow);
-      console.error("[login] createSupabaseBrowserClient failed — check NEXT_PUBLIC_SUPABASE_* in .env.local", e);
-      setCheckingSession(false);
-      return () => {
-        cancelled = true;
-      };
+    return () => clearTimeout(slow);
+  }, [mounted]);
+
+  const redirectAfterLogin = useCallback(() => {
+    const stored = typeof sessionStorage !== "undefined" ? sessionStorage.getItem("redirect_after_login") : null;
+    if (stored) {
+      sessionStorage.removeItem("redirect_after_login");
+      router.replace(stored);
+    } else {
+      router.replace("/");
     }
-    supabase.auth
-      .getSession()
-      .then((result: AuthResponse) => {
-        if (cancelled) return;
-        clearTimeout(slow);
-        const session = result.data.session;
-        if (session) {
-          const stored = sessionStorage.getItem("redirect_after_login");
-          if (stored) {
-            sessionStorage.removeItem("redirect_after_login");
-            router.replace(stored);
-          } else {
-            router.replace("/");
-          }
-          router.refresh();
-        } else {
-          setCheckingSession(false);
-        }
-      })
-      .catch((err: unknown) => {
-        clearTimeout(slow);
-        console.error("[login] getSession failed", err);
-        if (!cancelled) setCheckingSession(false);
-      });
-    return () => {
-      cancelled = true;
-      clearTimeout(slow);
-    };
-  }, [mounted, router]);
+    router.refresh();
+  }, [router]);
+
+  /**
+   * Signed-in users should not stay on /login. AuthSessionProvider uses GET /api/auth/session
+   * (server cookies), so this catches magic-link new users who tap Sign in before the client
+   * hydrates — unlike supabase.auth.getSession() alone, which can briefly miss the new session.
+   * PasswordOnboardingGate on `/` handles `has_password_set === false` && `skipped_password_at == null`.
+   */
+  useEffect(() => {
+    if (!mounted || authSessionLoading || !sessionUser) return;
+    redirectAfterLogin();
+  }, [mounted, authSessionLoading, sessionUser, redirectAfterLogin]);
 
   useEffect(() => {
     if (!mounted || typeof window === "undefined") return;
@@ -107,17 +91,6 @@ function LoginForm() {
     if (!mounted) return;
     if (typeof window !== "undefined" && searchParams.get("error") === "auth") setAuthError(true);
   }, [mounted, searchParams]);
-
-  const redirectAfterLogin = () => {
-    const stored = typeof sessionStorage !== "undefined" ? sessionStorage.getItem("redirect_after_login") : null;
-    if (stored) {
-      sessionStorage.removeItem("redirect_after_login");
-      router.replace(stored);
-    } else {
-      router.replace("/");
-    }
-    router.refresh();
-  };
 
   const sendMagicLink = async () => {
     if (typeof window === "undefined" || !emailNorm.includes("@")) return;
@@ -184,10 +157,19 @@ function LoginForm() {
     await sendMagicLink();
   };
 
-  if (checkingSession) {
+  const waitingOnAuthSession = mounted && authSessionLoading && !sessionWaitTimedOut;
+  if (!mounted || waitingOnAuthSession) {
     return (
       <div style={{ padding: 40, textAlign: "center", fontFamily: "sans-serif" }}>
         <p style={{ color: "#666", fontSize: 16 }}>Checking session…</p>
+      </div>
+    );
+  }
+
+  if (sessionUser) {
+    return (
+      <div style={{ padding: 40, textAlign: "center", fontFamily: "sans-serif" }}>
+        <p style={{ color: "#666", fontSize: 16 }}>Signed in — taking you to GoShed…</p>
       </div>
     );
   }
@@ -340,23 +322,33 @@ function LoginForm() {
           </button>
         </>
       ) : (
-        <button
-          type="button"
-          onClick={handleSendMeALink}
-          disabled={sending || !emailNorm.includes("@")}
-          style={{
-            width: "100%",
-            padding: 12,
-            background: sending ? "#8a7a6a" : "#3d2e20",
-            color: "white",
-            border: "none",
-            borderRadius: 8,
-            fontSize: 16,
-            cursor: sending ? "wait" : "pointer",
-          }}
-        >
-          {sending ? "Sending…" : "Send me a link"}
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={handleSendMeALink}
+            disabled={sending || !emailNorm.includes("@")}
+            style={{
+              width: "100%",
+              padding: 12,
+              background: sending ? "#8a7a6a" : "#3d2e20",
+              color: "white",
+              border: "none",
+              borderRadius: 8,
+              fontSize: 16,
+              cursor: sending ? "wait" : "pointer",
+            }}
+          >
+            {sending ? "Sending…" : "Send me a link"}
+          </button>
+          <p style={{ margin: "14px 0 0", textAlign: "center", fontSize: 14, color: "#666", lineHeight: 1.45 }}>
+            <Link
+              href="/set-password"
+              style={{ color: "#3d2e20", fontWeight: 500, textDecoration: "underline" }}
+            >
+              Create a password instead
+            </Link>
+          </p>
+        </>
       )}
     </div>
   );

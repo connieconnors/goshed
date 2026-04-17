@@ -18,7 +18,8 @@ export function PasswordOnboardingGate({ children }: { children: React.ReactNode
   const pathname = usePathname() ?? "";
   const { user, loading, refresh } = useAuthSession();
   /** Full-screen gate must not cover sign-in entry routes or users cannot click anything. */
-  const isAuthEntryRoute = pathname === "/login" || pathname.startsWith("/auth/");
+  const isAuthEntryRoute =
+    pathname === "/login" || pathname === "/set-password" || pathname.startsWith("/auth/");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [submitting, setSubmitting] = useState(false);
