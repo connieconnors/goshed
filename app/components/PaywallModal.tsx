@@ -15,16 +15,23 @@ type PaywallModalProps = {
 
 const API_KEY = process.env.NEXT_PUBLIC_REVENUECAT_API_KEY ?? "";
 
+/** Shown when RevenueCat cannot offer web purchases (no key, load failure, or no packages). */
+const WEB_SUBSCRIPTIONS_FALLBACK =
+  "Subscriptions are available on iOS — or enter a promo code below.";
+
 export function PaywallModal({
   open,
   onClose,
   onPurchaseSuccess,
-  itemCount = 20,
+  itemCount: _itemCount = 20,
 }: PaywallModalProps) {
   const [userId, setUserId] = useState<string | null>(null);
   const [monthlyPackage, setMonthlyPackage] = useState<Package | null>(null);
   const [yearlyPackage, setYearlyPackage] = useState<Package | null>(null);
-  const [offeringsError, setOfferingsError] = useState<string | null>(null);
+  /** When set, show this instead of RevenueCat (e.g. not signed in). */
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [plansLoading, setPlansLoading] = useState(false);
+  const [plansSettled, setPlansSettled] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
   const [showPromoInput, setShowPromoInput] = useState(false);
@@ -52,36 +59,70 @@ export function PaywallModal({
   }, []);
 
   useEffect(() => {
-    if (!open) return;
-
-    if (!API_KEY) {
-      setOfferingsError("RevenueCat is not configured. Use a promo code or try again later.");
+    if (!open) {
+      setUserId(null);
+      setMonthlyPackage(null);
+      setYearlyPackage(null);
+      setStatusMessage(null);
+      setPlansLoading(false);
+      setPlansSettled(false);
+      setPurchaseError(null);
+      setShowPromoInput(false);
+      setPromoCode("");
+      setPromoError(null);
+      setPromoSuccess(null);
       return;
     }
 
     let cancelled = false;
     const OFFERINGS_TIMEOUT_MS = 10_000;
 
+    const finish = () => {
+      if (!cancelled) {
+        setPlansSettled(true);
+        setPlansLoading(false);
+      }
+    };
+
     const run = async () => {
+      setPlansSettled(false);
+      setPlansLoading(true);
+      setStatusMessage(null);
+      setMonthlyPackage(null);
+      setYearlyPackage(null);
+      setPurchaseError(null);
+
       const snap = await refresh();
       const uid = snap.user?.id ?? null;
       if (cancelled) return;
       setUserId(uid);
 
       if (!uid) {
-        setOfferingsError("Sign in to subscribe.");
+        setStatusMessage("Sign in to subscribe.");
+        finish();
+        return;
+      }
+
+      if (!API_KEY.trim()) {
+        setShowPromoInput(true);
+        finish();
         return;
       }
 
       const ok = await ensureConfigured(uid);
-      if (cancelled || !ok) {
-        setOfferingsError("Could not load plans. Try a promo code below.");
+      if (cancelled) return;
+      if (!ok) {
+        setShowPromoInput(true);
+        finish();
         return;
       }
 
       const timeoutId = setTimeout(() => {
         if (cancelled) return;
-        setOfferingsError("Plans are taking a while to load. Use a promo code below or try again.");
+        setMonthlyPackage(null);
+        setYearlyPackage(null);
+        setShowPromoInput(true);
+        finish();
       }, OFFERINGS_TIMEOUT_MS);
 
       try {
@@ -90,25 +131,36 @@ export function PaywallModal({
         clearTimeout(timeoutId);
         if (cancelled) return;
         const current = offerings.current;
-        if (!current) {
-          setOfferingsError(null);
-          return;
+        const monthly = current?.monthly ?? null;
+        const yearly = current?.annual ?? null;
+        setMonthlyPackage(monthly);
+        setYearlyPackage(yearly);
+        if (!monthly && !yearly) {
+          setShowPromoInput(true);
         }
-        setMonthlyPackage(current.monthly ?? null);
-        setYearlyPackage(current.annual ?? null);
-        setOfferingsError(null);
-      } catch (err) {
+      } catch {
         clearTimeout(timeoutId);
         if (cancelled) return;
-        setOfferingsError(err instanceof Error ? err.message : "Could not load plans. Use a promo code below.");
+        setMonthlyPackage(null);
+        setYearlyPackage(null);
+        setShowPromoInput(true);
+      } finally {
+        if (!cancelled) clearTimeout(timeoutId);
+        finish();
       }
     };
 
-    run();
+    void run();
     return () => {
       cancelled = true;
     };
   }, [open, ensureConfigured, refresh]);
+
+  useEffect(() => {
+    if (open && userId && plansSettled && !(monthlyPackage || yearlyPackage)) {
+      setShowPromoInput(true);
+    }
+  }, [open, userId, plansSettled, monthlyPackage, yearlyPackage]);
 
   const handlePurchase = useCallback(
     async (pkg: Package | null) => {
@@ -160,6 +212,11 @@ export function PaywallModal({
   }, [promoCode, promoLoading, onClose, onPurchaseSuccess]);
 
   if (!open) return null;
+
+  const signedIn = !!userId;
+  const hasRcPackages = !!(monthlyPackage || yearlyPackage);
+  const showNativePurchaseButtons = signedIn && plansSettled && hasRcPackages;
+  const showWebFallback = signedIn && plansSettled && !hasRcPackages;
 
   return (
     <div
@@ -233,49 +290,73 @@ export function PaywallModal({
           Keep going for $2.99 a month — or $24.99 for the year.
         </p>
 
-        {offeringsError && (
-          <p style={{ color: "var(--ink-soft)", fontSize: 14, marginBottom: 16 }}>{offeringsError}</p>
+        {plansLoading && signedIn && (
+          <p style={{ color: "var(--ink-soft)", fontSize: 14, marginBottom: 16 }}>Loading plans…</p>
         )}
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <button
-            type="button"
-            disabled={!yearlyPackage || purchasing}
-            onClick={() => handlePurchase(yearlyPackage)}
-            className="goshed-primary-btn"
-            style={{ width: "100%", justifyContent: "center", padding: "14px 20px" }}
-          >
-            {purchasing ? "Processing…" : "Get the year — $24.99"}
-          </button>
-          <button
-            type="button"
-            disabled={!monthlyPackage || purchasing}
-            onClick={() => handlePurchase(monthlyPackage)}
+        {!signedIn && plansSettled && statusMessage ? (
+          <p style={{ color: "var(--ink-soft)", fontSize: 14, marginBottom: 16 }}>{statusMessage}</p>
+        ) : null}
+
+        {showWebFallback && !plansLoading ? (
+          <p
             style={{
-              width: "100%",
-              padding: "14px 20px",
-              background: "transparent",
               color: "var(--ink)",
-              border: "1px solid var(--surface2)",
+              fontSize: 15,
+              lineHeight: 1.55,
+              marginBottom: 20,
+              padding: "14px 16px",
+              background: "var(--surface)",
               borderRadius: 12,
-              fontSize: 16,
-              cursor: monthlyPackage && !purchasing ? "pointer" : "not-allowed",
-              fontFamily: "inherit",
+              border: "1px solid var(--surface2)",
             }}
           >
-            {purchasing ? "Processing…" : "Continue — $2.99/month"}
-          </button>
-        </div>
+            {WEB_SUBSCRIPTIONS_FALLBACK}
+          </p>
+        ) : null}
 
-        <p style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 8, textAlign: "center", lineHeight: 1.5 }}>
-          Cancel anytime.
-        </p>
+        {showNativePurchaseButtons ? (
+          <>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <button
+                type="button"
+                disabled={!yearlyPackage || purchasing}
+                onClick={() => handlePurchase(yearlyPackage)}
+                className="goshed-primary-btn"
+                style={{ width: "100%", justifyContent: "center", padding: "14px 20px" }}
+              >
+                {purchasing ? "Processing…" : "Get the year — $24.99"}
+              </button>
+              <button
+                type="button"
+                disabled={!monthlyPackage || purchasing}
+                onClick={() => handlePurchase(monthlyPackage)}
+                style={{
+                  width: "100%",
+                  padding: "14px 20px",
+                  background: "transparent",
+                  color: "var(--ink)",
+                  border: "1px solid var(--surface2)",
+                  borderRadius: 12,
+                  fontSize: 16,
+                  cursor: monthlyPackage && !purchasing ? "pointer" : "not-allowed",
+                  fontFamily: "inherit",
+                }}
+              >
+                {purchasing ? "Processing…" : "Continue — $2.99/month"}
+              </button>
+            </div>
+            <p style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 8, textAlign: "center", lineHeight: 1.5 }}>
+              Cancel anytime.
+            </p>
+          </>
+        ) : null}
 
         {purchaseError && (
           <p style={{ color: "#c00", fontSize: 14, marginTop: 10 }}>{purchaseError}</p>
         )}
 
-        {!showPromoInput ? (
+        {showNativePurchaseButtons && !showPromoInput ? (
           <button
             type="button"
             onClick={() => setShowPromoInput(true)}
@@ -292,8 +373,10 @@ export function PaywallModal({
           >
             Have a code?
           </button>
-        ) : (
-          <div style={{ marginTop: 14 }}>
+        ) : null}
+
+        {(showPromoInput || showWebFallback) && (
+          <div style={{ marginTop: showNativePurchaseButtons ? 14 : 0 }}>
             <input
               type="text"
               value={promoCode}
@@ -337,7 +420,6 @@ export function PaywallModal({
             )}
           </div>
         )}
-
       </div>
     </div>
   );

@@ -1323,13 +1323,13 @@ function HomeContent() {
                           : 'No rain expected — good day to put it out.'}
                       </p>
                     )}
-                    {chosenDecision === 'donate' && pickupDonationPlaces.length > 0 && (
+                    {chosenDecision === 'donate' && contextualPlaces.length > 0 && (
                       <div style={{ marginBottom: '14px' }}>
                         <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ink)', marginBottom: '8px', marginTop: 0 }}>
-                          Pickup options near you:
+                          Drop-offs near you:
                         </p>
                         <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '14px', lineHeight: 1.6, color: 'var(--ink)' }}>
-                          {pickupDonationPlaces.map((place) => (
+                          {contextualPlaces.map((place) => (
                             <li key={place.place_id} style={{ marginBottom: '4px' }}>
                               <a
                                 href={`https://www.google.com/maps/search/?api=1&query_place_id=${encodeURIComponent(place.place_id)}`}
@@ -1346,13 +1346,16 @@ function HomeContent() {
                         </ul>
                       </div>
                     )}
-                    {chosenDecision === 'donate' &&
-                      contextualPlaces.length > 0 &&
-                      pickupDonationPlaces.length === 0 && (
+                    {chosenDecision === 'donate' && pickupDonationPlaces.length > 0 && (
                       <div style={{ marginBottom: '14px' }}>
-                        <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ink)', marginBottom: '8px', marginTop: 0 }}>Near you:</p>
+                        <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ink)', marginBottom: '6px', marginTop: 0 }}>
+                          Large-item donation spots (may offer pickup — call ahead):
+                        </p>
+                        <p style={{ fontSize: '12px', color: 'var(--ink-soft)', lineHeight: 1.45, margin: '0 0 8px' }}>
+                          For furniture, appliances, and similar bulky donations only — not for clothing, bedding, or shelter drop-offs.
+                        </p>
                         <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '14px', lineHeight: 1.6, color: 'var(--ink)' }}>
-                          {contextualPlaces.map((place) => (
+                          {pickupDonationPlaces.map((place) => (
                             <li key={place.place_id} style={{ marginBottom: '4px' }}>
                               <a
                                 href={`https://www.google.com/maps/search/?api=1&query_place_id=${encodeURIComponent(place.place_id)}`}

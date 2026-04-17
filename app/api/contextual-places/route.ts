@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   isFabricBedding,
   isMedicalMobility,
-  isConsignmentContext,
   getCarDonationPlacesQuery,
   isBulkyPickupDonationContext,
 } from "@/lib/contextualSuggestions";
@@ -26,6 +25,12 @@ function haversineKm(
 }
 
 type PlaceHit = { name: string; place_id: string; distance_mi: number };
+
+/** Safety filter — consignment belongs on Sell only, never in Donate lists. */
+function isLikelyConsignmentResaleName(name: string): boolean {
+  const n = name.toLowerCase();
+  return /\b(consign|consignment|resale|re-?sale|tag\s+sale|worth\s+repeating)\b/.test(n);
+}
 
 async function fetchPlaces(
   apiKey: string,
@@ -117,18 +122,17 @@ export async function POST(request: NextRequest) {
       : Promise.resolve([]);
 
     const medical = isMedicalMobility(item_label);
-    const consignment = isConsignmentContext(item_label, value_range);
     const carDonationQuery = getCarDonationPlacesQuery(item_label, value_range, description);
 
+    /** Primary donation discovery (Donate flow only — consignment is Sell-only via /api/places/consignment). */
     const queryPromises: Promise<PlaceHit[]>[] = [
       fetchPlaces(apiKey, "thrift store", lat, lng),
       fetchPlaces(apiKey, "donation drop off", lat, lng),
+      fetchPlaces(apiKey, "Veterans of America pickup", lat, lng),
+      fetchPlaces(apiKey, "breast cancer charity clothing donation pickup", lat, lng),
     ];
     if (medical) {
       queryPromises.push(fetchPlaces(apiKey, "senior center", lat, lng));
-    }
-    if (consignment) {
-      queryPromises.push(fetchPlaces(apiKey, "consignment shop", lat, lng));
     }
     if (carDonationQuery) {
       queryPromises.push(fetchPlaces(apiKey, carDonationQuery, lat, lng));
@@ -148,6 +152,7 @@ export async function POST(request: NextRequest) {
     }
     const places = [...byId.values()]
       .filter((p) => !pickupIds.has(p.place_id))
+      .filter((p) => !isLikelyConsignmentResaleName(p.name))
       .sort((a, b) => a.distance_mi - b.distance_mi)
       .slice(0, 5);
     return NextResponse.json({ places, pickupPlaces });

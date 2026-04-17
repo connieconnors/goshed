@@ -6,11 +6,11 @@ import { parseValueRange } from "@/lib/parseValueRange";
 
 /** User-facing hint for charitable vehicle / large-item / high-value donation paths (recommend copy, etc.). */
 export const CAR_DONATION_TAX_HINT =
-  "Consider donating for a tax deduction — some organizations will even pick it up.";
+  "Consider donating for a tax deduction — some organizations may offer pickup.";
 
 /** Shown above ReStore / SVdP / Salvation Army pickup suggestions for bulky donate flows. */
 export const BULK_PICKUP_DONATION_COPY =
-  "Too big to drop off? These organizations will pick it up — usually free.";
+  "Too big to drop off? These organizations might pick up large donations in some areas — call ahead to confirm.";
 
 /** True if item sounds like fabric/bedding (used sheets, pillows, towels, blankets) for Places search. */
 export function isFabricBedding(itemLabel: string | undefined): boolean {
@@ -160,17 +160,36 @@ export function isLargeItem(itemLabel: string, description?: string): boolean {
 }
 
 /**
- * Furniture, appliances, exercise equipment, or large electronics — pickup-friendly donation orgs (ReStore, SVdP, Salvation Army).
- * Skips small electronics (phone, laptop, etc.).
+ * Furniture, appliances, exercise equipment, large rugs, mattresses, or large TVs — orgs that
+ * sometimes schedule donation pickup (ReStore, SVdP, Salvation Army). Never true for textiles,
+ * clothing, blankets, or small items alone. Not used for animal shelters (drop-off only).
  */
 export function isBulkyPickupDonationContext(itemLabel: string | undefined, description?: string): boolean {
   if (isVehicleDonationItem(itemLabel, description)) return false;
   const t = itemText(itemLabel, description);
+
+  const looksLikeShelterRescueDropoff =
+    /\b(animal shelter|animal rescue|humane society|spca|dog rescue|cat rescue|wildlife)\b/.test(t);
+  if (looksLikeShelterRescueDropoff) return false;
+
+  const softGoodsOnly =
+    /\b(textiles?|clothing|clothes|apparel|shirt|blouse|dress|skirt|pants|jeans|jacket|coat|sweater|hoodie|cardigan|socks?|underwear|lingerie|blanket|throw|comforter|quilt|duvet|towel|towels|bedding|linens?|pillow|pillows|sheets?|scarf|mittens|tablecloth|napkins?|fabric\s+scraps?)\b/.test(
+      t
+    ) &&
+    !/\b(furniture|sofa|couch|sectional|loveseat|futon|mattress|appliance|refrigerator|fridge|freezer|washer|washing machine|dryer|stove|dresser|bookshelf|treadmill|television|tv\b|entertainment center)\b/.test(
+      t
+    ) &&
+    !/\b(area rug|oriental rug|persian rug|large rug|room\s*sized rug)\b/.test(t) &&
+    !/\brug\b.*\b(large|oversized|heavy|8\s*x|9\s*x|10\s*x|9x12|8x10)\b/.test(t) &&
+    !/\b(large|oversized|heavy)\b.*\brug\b/.test(t);
+  if (softGoodsOnly) return false;
+
   if (
     /\b(phone|smartphone|iphone|android)\b/.test(t) ||
     /\b(tablet|ipad|kindle)\b/.test(t) ||
     /\b(laptop|notebook computer|chromebook)\b/.test(t) ||
-    /\b(headphones?|earbuds?|airpods?|mouse|keyboard|webcam|router)\b/.test(t)
+    /\b(headphones?|earbuds?|airpods?|mouse|keyboard|webcam|router)\b/.test(t) ||
+    /\b(curtain|curtains|drape|pillowcase|kitchen rug|bath mat|doormat)\b/.test(t)
   ) {
     return false;
   }
@@ -183,6 +202,8 @@ export function isBulkyPickupDonationContext(itemLabel: string | undefined, desc
       t
     ) ||
     /\b(tv|television|flat screen|plasma|curved tv|hdtv|big screen|entertainment center)\b/.test(t) ||
+    /\b(area rug|oriental rug|persian rug|large rug|room\s*sized rug)\b/.test(t) ||
+    (/\brug\b/.test(t) && /\b(large|oversized|heavy|8\s*x|9\s*x|10\s*x|9x12|8x10)\b/.test(t)) ||
     /\b(large|bulky|heavy|oversized)\b/.test(t)
   );
 }
