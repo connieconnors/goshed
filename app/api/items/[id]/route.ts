@@ -18,7 +18,7 @@ export async function GET(
 
   const { data, error } = await supabase
     .from("items")
-    .select("id, photo_url, item_label, recommendation, value_range_raw, value_low, value_high, status, notes, created_at, cleared_at")
+    .select("id, photo_url, item_label, recommendation, value_range_raw, value_low, value_high, status, notes, created_at, cleared_at, bucket_change_count")
     .eq("id", id)
     .eq("user_id", user.id)
     .single();
@@ -56,7 +56,24 @@ export async function PATCH(
   }
 
   const validRec = ["sell", "donate", "gift", "curb", "keep", "repurpose"];
-  const updates: { status?: string; recommendation?: string; cleared_at?: string | null } = {};
+
+  const { data: existing, error: fetchErr } = await supabase
+    .from("items")
+    .select("recommendation, bucket_change_count")
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .single();
+
+  if (fetchErr || !existing) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  const updates: {
+    status?: string;
+    recommendation?: string;
+    cleared_at?: string | null;
+    bucket_change_count?: number;
+  } = {};
   if (body.status === "done") {
     updates.status = "done";
     updates.cleared_at = null;
@@ -70,7 +87,14 @@ export async function PATCH(
       typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
     updates.cleared_at = fromClient ?? new Date().toISOString();
   }
-  if (body.recommendation != null && validRec.includes(body.recommendation)) updates.recommendation = body.recommendation;
+  if (body.recommendation != null && validRec.includes(body.recommendation)) {
+    updates.recommendation = body.recommendation;
+    if (body.recommendation !== existing.recommendation) {
+      const prev = existing.bucket_change_count;
+      const n = typeof prev === "number" && Number.isFinite(prev) ? prev : 0;
+      updates.bucket_change_count = n + 1;
+    }
+  }
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "Provide status and/or recommendation" }, { status: 400 });
@@ -81,7 +105,7 @@ export async function PATCH(
     .update(updates)
     .eq("id", id)
     .eq("user_id", user.id)
-    .select("id, photo_url, item_label, recommendation, value_range_raw, value_low, value_high, status, notes, created_at, cleared_at")
+    .select("id, photo_url, item_label, recommendation, value_range_raw, value_low, value_high, status, notes, created_at, cleared_at, bucket_change_count")
     .single();
 
   if (error) {

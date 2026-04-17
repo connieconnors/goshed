@@ -10,7 +10,7 @@ export async function GET() {
   }
   const { data, error } = await supabase
     .from("items")
-    .select("id, photo_url, item_label, recommendation, value_range_raw, value_low, value_high, status, created_at, cleared_at")
+    .select("id, photo_url, item_label, recommendation, value_range_raw, value_low, value_high, status, created_at, cleared_at, bucket_change_count")
     .eq("user_id", user.id)
     .eq("hidden", false)
     .order("created_at", { ascending: false });
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
       status: "pending",
       notes: notes ?? null,
     })
-    .select("id")
+    .select("id, recommendation, bucket_change_count")
     .single();
 
   if (error) {
@@ -78,5 +78,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ id: data.id });
+  return NextResponse.json({
+    id: data.id,
+    recommendation: data.recommendation,
+    bucket_change_count:
+      typeof data.bucket_change_count === "number" ? data.bucket_change_count : 0,
+  });
 }

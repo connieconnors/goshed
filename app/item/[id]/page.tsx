@@ -3,6 +3,12 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
+import { SentimentalNudge } from "@/components/SentimentalNudge";
+import { useAuthSession } from "@/lib/auth-session-context";
+import {
+  fetchConsignmentPlacesClient,
+  type ConsignmentPlaceRow,
+} from "@/lib/fetchConsignmentPlacesClient";
 
 type ItemDetail = {
   id: string;
@@ -16,6 +22,7 @@ type ItemDetail = {
   notes: string | null;
   created_at: string;
   cleared_at?: string | null;
+  bucket_change_count?: number | null;
 };
 
 const BADGE_LABELS: Record<string, string> = {
@@ -27,8 +34,6 @@ const BADGE_LABELS: Record<string, string> = {
   repurpose: "Repurpose",
 };
 
-const REC_OPTIONS = ["sell", "donate", "gift", "curb", "keep", "repurpose"] as const;
-
 function normalizeStatus(s: unknown): string {
   const v = typeof s === "string" ? s.toLowerCase() : "";
   if (v === "done" || v === "cleared") return v;
@@ -38,6 +43,7 @@ function normalizeStatus(s: unknown): string {
 export default function ItemDetailPage() {
   const router = useRouter();
   const params = useParams();
+  const { user: sessionUser, loading: sessionLoading } = useAuthSession();
   const id = typeof params?.id === "string" ? params.id : null;
   const [item, setItem] = useState<ItemDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -46,6 +52,11 @@ export default function ItemDetailPage() {
   const [draftRecommendation, setDraftRecommendation] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [sentimentalOpen, setSentimentalOpen] = useState(false);
+  const [itemConsignmentExpanded, setItemConsignmentExpanded] = useState(false);
+  const [itemConsignmentLoading, setItemConsignmentLoading] = useState(false);
+  const [itemConsignmentPlaces, setItemConsignmentPlaces] = useState<ConsignmentPlaceRow[]>([]);
+  const [pendingRecommendation, setPendingRecommendation] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) {
@@ -82,11 +93,21 @@ export default function ItemDetailPage() {
     return () => { cancelled = true; };
   }, [id, router]);
 
+  const isLoggedIn = sessionLoading ? null : !!sessionUser;
+
+  useEffect(() => {
+    if (item?.recommendation !== "sell") {
+      setItemConsignmentExpanded(false);
+      setItemConsignmentPlaces([]);
+      setItemConsignmentLoading(false);
+    }
+  }, [item?.recommendation]);
+
   const patchItem = async (
     body: { recommendation?: string; status?: string; cleared_at?: string },
     onSuccess?: (data: ItemDetail) => void
-  ) => {
-    if (!id || updating) return;
+  ): Promise<boolean> => {
+    if (!id || updating) return false;
     setUpdating(true);
     try {
       const res = await fetch(`/api/items/${id}`, {
@@ -100,11 +121,77 @@ export default function ItemDetailPage() {
       const normalized = { ...data, status: normalizeStatus(data.status) };
       setItem(normalized);
       onSuccess?.(normalized);
+      return true;
     } catch {
-      // Keep current item state on error
+      return false;
     } finally {
       setUpdating(false);
     }
+  };
+
+  const tryBeginBucketSave = () => {
+    if (!item || draftRecommendation == null || draftRecommendation === item.recommendation) return;
+    const next = draftRecommendation;
+    const c = item.bucket_change_count ?? 0;
+    if (c === 1) {
+      setPendingRecommendation(next);
+      setSentimentalOpen(true);
+      return;
+    }
+    void patchItem({ recommendation: next }, () => {
+      setDraftRecommendation(null);
+      setPendingRecommendation(null);
+    });
+  };
+
+  const handleSentimentalKeepGoing = () => {
+    if (!item || pendingRecommendation == null) return;
+    const next = pendingRecommendation;
+    void patchItem({ recommendation: next }, () => {
+      setDraftRecommendation(null);
+      setPendingRecommendation(null);
+    });
+  };
+
+  const handleItemConsignmentLinkClick = async () => {
+    if (itemConsignmentLoading || itemConsignmentExpanded) return;
+    setItemConsignmentExpanded(true);
+    setItemConsignmentLoading(true);
+    const places = await fetchConsignmentPlacesClient();
+    setItemConsignmentPlaces(places);
+    setItemConsignmentLoading(false);
+  };
+
+  const handleMoveToKeepNoRemind = async () => {
+    return await patchItem({ recommendation: "keep" }, () => {
+      setDraftRecommendation(null);
+      setPendingRecommendation(null);
+    });
+  };
+
+  const handleMoveToKeepRemind = async () => {
+    if (!id || !item) return false;
+    const ok = await patchItem({ recommendation: "keep" }, () => {
+      setDraftRecommendation(null);
+      setPendingRecommendation(null);
+    });
+    if (ok && typeof sessionUser?.email === "string" && sessionUser.email.trim().length > 0) {
+      try {
+        await fetch("/api/nudge/remind", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            itemId: id,
+            itemName: item.item_label,
+            email: sessionUser.email.trim(),
+          }),
+        });
+      } catch {
+        // Row saved; email is best-effort
+      }
+    }
+    return ok;
   };
 
   const handleMarkCleared = async () => {
@@ -239,6 +326,69 @@ export default function ItemDetailPage() {
               </p>
             </div>
           ) : null}
+          {item.recommendation === "sell" && isLoggedIn === true && (
+            <div style={{ marginTop: "14px", paddingTop: "14px", borderTop: "1px solid var(--soft)" }}>
+              <button
+                type="button"
+                onClick={() => void handleItemConsignmentLinkClick()}
+                disabled={itemConsignmentLoading}
+                style={{
+                  fontSize: "13px",
+                  color: "var(--accent)",
+                  background: "none",
+                  border: "none",
+                  cursor: itemConsignmentLoading ? "wait" : "pointer",
+                  textDecoration: "underline",
+                  padding: 0,
+                  fontFamily: "inherit",
+                  textAlign: "left",
+                }}
+              >
+                Want to see consignment stores near you?
+              </button>
+              {itemConsignmentExpanded && (
+                <div style={{ marginTop: "10px" }}>
+                  {itemConsignmentLoading ? (
+                    <p style={{ fontSize: "13px", color: "var(--ink-soft)", margin: 0 }}>Loading nearby…</p>
+                  ) : itemConsignmentPlaces.length === 0 ? (
+                    <p style={{ fontSize: "13px", color: "var(--ink-soft)", margin: 0 }}>
+                      No stores found or location unavailable.
+                    </p>
+                  ) : (
+                    <ul
+                      style={{
+                        margin: 0,
+                        paddingLeft: "18px",
+                        fontSize: "13px",
+                        lineHeight: 1.55,
+                        color: "var(--ink)",
+                      }}
+                    >
+                      {itemConsignmentPlaces.map((p) => (
+                        <li key={p.place_id} style={{ marginBottom: "8px" }}>
+                          <a
+                            href={`https://www.google.com/maps/search/?api=1&query_place_id=${encodeURIComponent(p.place_id)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ color: "var(--accent)", fontWeight: 600, textDecoration: "none" }}
+                          >
+                            {p.name}
+                          </a>
+                          {p.rating != null ? (
+                            <span style={{ color: "var(--ink-soft)" }}> · {p.rating.toFixed(1)}★</span>
+                          ) : null}
+                          <div style={{ fontSize: "12px", color: "var(--ink-soft)", marginTop: "2px" }}>
+                            {p.address}
+                          </div>
+                          <div style={{ fontSize: "11px", color: "var(--ink-soft)" }}>{p.distance_mi} mi</div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Change recommendation */}
@@ -276,7 +426,7 @@ export default function ItemDetailPage() {
             <button
               type="button"
               disabled={updating}
-              onClick={() => patchItem({ recommendation: draftRecommendation }, () => setDraftRecommendation(null))}
+              onClick={tryBeginBucketSave}
               style={{
                 width: "100%",
                 padding: "10px 16px",
@@ -358,6 +508,16 @@ export default function ItemDetailPage() {
           </Link>
         </p>
       </div>
+
+      <SentimentalNudge
+        open={sentimentalOpen}
+        itemName={item.item_label}
+        onClose={() => setSentimentalOpen(false)}
+        onMoveToKeepRemind={handleMoveToKeepRemind}
+        onMoveToKeepNoRemind={handleMoveToKeepNoRemind}
+        onKeepGoing={handleSentimentalKeepGoing}
+      />
+
     </main>
   );
 }

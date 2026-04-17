@@ -6,6 +6,11 @@ import { useRouter } from 'next/navigation';
 import { useAuthSession } from '@/lib/auth-session-context';
 import { getRandomActionPrompt, type ActionPromptType } from '@/lib/actionPrompts';
 import { PaywallModal } from '@/app/components/PaywallModal';
+import { SentimentalNudge } from '@/components/SentimentalNudge';
+import {
+  fetchConsignmentPlacesClient,
+  type ConsignmentPlaceRow,
+} from '@/lib/fetchConsignmentPlacesClient';
 import { MOMENT_COPY } from '@/lib/momentCopy';
 import { guestGateDismissedInStorage, markGuestGateDismissed } from '@/lib/guestGateStorage';
 
@@ -181,6 +186,18 @@ function HomeContent() {
   const analysisImageDataUrlRef = useRef<string | null>(null);
   const savedForItemRef = useRef<string | null>(null);
   const savedItemIdRef = useRef<string | null>(null);
+  /** Mirrors server `items.bucket_change_count` for the current saved item (home flow). */
+  const savedItemBucketChangeCountRef = useRef(0);
+  type HomePendingRec = {
+    recData: RecommendResult;
+    optionId: RecommendResult['recommendation'];
+    priorRecommendation: RecommendResult['recommendation'];
+  };
+  const homePendingOtherRef = useRef<HomePendingRec | null>(null);
+  const [homeSentimentalOpen, setHomeSentimentalOpen] = useState(false);
+  const [homeConsignmentExpanded, setHomeConsignmentExpanded] = useState(false);
+  const [homeConsignmentLoading, setHomeConsignmentLoading] = useState(false);
+  const [homeConsignmentPlaces, setHomeConsignmentPlaces] = useState<ConsignmentPlaceRow[]>([]);
   const confirmedActionPromptRef = useRef<Record<string, string>>({});
   /** LLM-generated two-beat gift copy (packaging + recipient); null while loading or when decision is not gift. */
   const [giftConfirmationBeats, setGiftConfirmationBeats] = useState<string | null>(null);
@@ -215,6 +232,14 @@ function HomeContent() {
   /** Force guest-mode limit from URL (e.g. ?guest=1). Set in useEffect to avoid hydration mismatch. */
   const [forceGuestMode, setForceGuestMode] = useState(false);
   const effectiveGuest = (isLoggedIn !== true) || forceGuestMode;
+
+  useEffect(() => {
+    if (chosenDecision == null || chosenDecision !== 'sell') {
+      setHomeConsignmentExpanded(false);
+      setHomeConsignmentPlaces([]);
+      setHomeConsignmentLoading(false);
+    }
+  }, [chosenDecision]);
 
   const recordGuestFlowComplete = useCallback(() => {
     if (!effectiveGuest) return;
@@ -484,6 +509,7 @@ function HomeContent() {
     setContextualPlaces([]);
     savedForItemRef.current = null;
     savedItemIdRef.current = null;
+    savedItemBucketChangeCountRef.current = 0;
     lastSavedItemKey = null;
     confirmedActionPromptRef.current = {};
     setGiftConfirmationBeats(null);
@@ -493,6 +519,11 @@ function HomeContent() {
     if (refinementPhotoUrl) URL.revokeObjectURL(refinementPhotoUrl);
     setRefinementPhotoUrl(null);
     setLoading(true);
+    homePendingOtherRef.current = null;
+    setHomeSentimentalOpen(false);
+    setHomeConsignmentExpanded(false);
+    setHomeConsignmentLoading(false);
+    setHomeConsignmentPlaces([]);
 
     try {
       const dataUrl = await resizeAndToDataUrl(file);
@@ -524,6 +555,7 @@ function HomeContent() {
     setRainNext24h(null);
     savedForItemRef.current = null;
     savedItemIdRef.current = null;
+    savedItemBucketChangeCountRef.current = 0;
     lastSavedItemKey = null;
     confirmedActionPromptRef.current = {};
     setGiftConfirmationBeats(null);
@@ -536,6 +568,11 @@ function HomeContent() {
     setLoading(false);
     setRecommendLoading(false);
     setDecisionJustConfirmed(false);
+    homePendingOtherRef.current = null;
+    setHomeSentimentalOpen(false);
+    setHomeConsignmentExpanded(false);
+    setHomeConsignmentLoading(false);
+    setHomeConsignmentPlaces([]);
   };
 
   const handlePaywallSuccess = useCallback(() => {
@@ -565,8 +602,13 @@ function HomeContent() {
       }),
     })
       .then((res) => res.json())
-      .then((data: { id?: string }) => {
+      .then((data: { id?: string; bucket_change_count?: number }) => {
         if (data?.id) savedItemIdRef.current = data.id;
+        if (typeof data?.bucket_change_count === 'number' && Number.isFinite(data.bucket_change_count)) {
+          savedItemBucketChangeCountRef.current = data.bucket_change_count;
+        } else {
+          savedItemBucketChangeCountRef.current = 0;
+        }
         refreshAuthSession().catch(() => {});
       })
       .catch((err) => console.error('[shed] save item failed:', err));
@@ -619,11 +661,69 @@ function HomeContent() {
     return () => ac.abort();
   }, [chosenDecision, result?.item_label, result?.description, recommendResult?.reason]);
 
+  const patchSavedItemRecommendation = async (recommendation: string): Promise<boolean> => {
+    const sid = savedItemIdRef.current;
+    if (!sid) return false;
+    const res = await fetch(`/api/items/${sid}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ recommendation }),
+    });
+    if (!res.ok) {
+      console.error('[home] PATCH item recommendation failed', res.status);
+      return false;
+    }
+    try {
+      const data = (await res.json()) as { bucket_change_count?: number | null };
+      if (typeof data.bucket_change_count === 'number' && Number.isFinite(data.bucket_change_count)) {
+        savedItemBucketChangeCountRef.current = data.bucket_change_count;
+      }
+    } catch {
+      /* ignore */
+    }
+    return true;
+  };
+
+  const fetchRecommendForOverride = async (
+    optionId: RecommendResult['recommendation']
+  ): Promise<RecommendResult | null> => {
+    const r = result;
+    if (!r) return null;
+    const item_label = r.item_label;
+    const value_range = r.value_range;
+    const shippable = typeof r.shippable === 'boolean' ? r.shippable : deriveShippable(r);
+    try {
+      const recRes = await fetch('/api/recommend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          item_label,
+          value_range,
+          shippable,
+          user_note: refinementNote.trim() || undefined,
+          user_override: optionId,
+        }),
+      });
+      const recRaw = await recRes.text();
+      let recData: RecommendResult & { error?: string };
+      try {
+        recData = recRaw ? JSON.parse(recRaw) : {};
+      } catch {
+        return null;
+      }
+      if (!recRes.ok) return null;
+      return recData as RecommendResult;
+    } catch {
+      return null;
+    }
+  };
+
   const recommendedAction = recommendResult
     ? ACTION_OPTIONS.find(o => o.id === recommendResult.recommendation)
     : null;
 
-  const handlePrimaryDecision = () => {
+  const commitPrimaryDecisionUi = () => {
     if (!recommendResult) return;
     const decision = recommendResult.recommendation;
     setChosenDecision(decision);
@@ -632,10 +732,77 @@ function HomeContent() {
       fetch(`/api/items/${savedItemIdRef.current}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ status: 'done' }),
       }).catch((err) => console.error('[shed] mark decision failed:', err));
     }
     setTimeout(() => setDecisionJustConfirmed(false), 800);
+  };
+
+  const handlePrimaryDecision = () => {
+    if (!recommendResult) return;
+    commitPrimaryDecisionUi();
+  };
+
+  const handleHomeConsignmentLinkClick = async () => {
+    if (homeConsignmentLoading || homeConsignmentExpanded) return;
+    setHomeConsignmentExpanded(true);
+    setHomeConsignmentLoading(true);
+    const places = await fetchConsignmentPlacesClient();
+    setHomeConsignmentPlaces(places);
+    setHomeConsignmentLoading(false);
+  };
+
+  const handleHomeSentimentalKeepGoing = () => {
+    const p = homePendingOtherRef.current;
+    if (!p) return;
+    const next = p.optionId;
+    void (async () => {
+      const ok = await patchSavedItemRecommendation(next);
+      if (ok) {
+        setRecommendResult(p.recData);
+        setChosenDecision(next);
+      }
+      homePendingOtherRef.current = null;
+    })();
+  };
+
+  const handleHomeMoveToKeepNoRemind = async () => {
+    const ok = await patchSavedItemRecommendation('keep');
+    if (!ok) return false;
+    homePendingOtherRef.current = null;
+    const rec = await fetchRecommendForOverride('keep');
+    if (rec) setRecommendResult(rec);
+    setChosenDecision('keep');
+    return true;
+  };
+
+  const handleHomeMoveToKeepRemind = async () => {
+    const ok = await patchSavedItemRecommendation('keep');
+    if (!ok) return false;
+    homePendingOtherRef.current = null;
+    const rec = await fetchRecommendForOverride('keep');
+    if (rec) setRecommendResult(rec);
+    setChosenDecision('keep');
+    const sid = savedItemIdRef.current;
+    const email = typeof authUser?.email === 'string' ? authUser.email.trim() : '';
+    if (sid && email.length > 0 && result?.item_label) {
+      try {
+        await fetch('/api/nudge/remind', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            itemId: sid,
+            itemName: result.item_label,
+            email,
+          }),
+        });
+      } catch {
+        /* best-effort */
+      }
+    }
+    return true;
   };
 
   const handleRefinementPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -686,6 +853,7 @@ function HomeContent() {
 
   const handleOtherOptionClick = async (optionId: RecommendResult['recommendation']) => {
     if (!result || recommendLoading) return;
+    const priorRecommendation = recommendResult?.recommendation;
     const item_label = result.item_label;
     const value_range = result.value_range;
     const shippable = typeof result.shippable === 'boolean' ? result.shippable : deriveShippable(result);
@@ -715,14 +883,32 @@ function HomeContent() {
         setRecommendError('retry');
         return;
       }
-      setRecommendResult(recData as RecommendResult);
+      const nextRec = recData as RecommendResult;
+
+      const sid = savedItemIdRef.current;
+      const loggedIn = isLoggedIn === true;
+      const c = savedItemBucketChangeCountRef.current ?? 0;
+      const bucketChanging = priorRecommendation != null && priorRecommendation !== optionId;
+
+      if (sid && loggedIn && bucketChanging) {
+        if (c === 1) {
+          homePendingOtherRef.current = {
+            recData: nextRec,
+            optionId,
+            priorRecommendation: priorRecommendation as RecommendResult['recommendation'],
+          };
+          setHomeSentimentalOpen(true);
+          return;
+        }
+      }
+
+      setRecommendResult(nextRec);
       setChosenDecision(optionId);
-      if (savedItemIdRef.current) {
-        fetch(`/api/items/${savedItemIdRef.current}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ recommendation: optionId }),
-        }).catch((err) => console.error('[shed] update item recommendation failed:', err));
+      if (sid && loggedIn) {
+        const ok = await patchSavedItemRecommendation(optionId);
+        if (!ok) {
+          console.error('[home] Could not sync recommendation to shed');
+        }
       }
     } catch {
       setRecommendError('retry');
@@ -1183,6 +1369,69 @@ function HomeContent() {
                         </ul>
                       </div>
                     )}
+                    {chosenDecision === 'sell' && isLoggedIn === true && (
+                      <div style={{ marginBottom: '14px' }}>
+                        <button
+                          type="button"
+                          onClick={() => void handleHomeConsignmentLinkClick()}
+                          disabled={homeConsignmentLoading}
+                          style={{
+                            fontSize: '13px',
+                            color: 'var(--accent)',
+                            background: 'none',
+                            border: 'none',
+                            cursor: homeConsignmentLoading ? 'wait' : 'pointer',
+                            textDecoration: 'underline',
+                            padding: 0,
+                            fontFamily: 'inherit',
+                            textAlign: 'left',
+                          }}
+                        >
+                          Want to see consignment stores near you?
+                        </button>
+                        {homeConsignmentExpanded && (
+                          <div style={{ marginTop: '10px' }}>
+                            {homeConsignmentLoading ? (
+                              <p style={{ fontSize: '13px', color: 'var(--ink-soft)', margin: 0 }}>Loading nearby…</p>
+                            ) : homeConsignmentPlaces.length === 0 ? (
+                              <p style={{ fontSize: '13px', color: 'var(--ink-soft)', margin: 0 }}>
+                                No stores found or location unavailable.
+                              </p>
+                            ) : (
+                              <ul
+                                style={{
+                                  margin: 0,
+                                  paddingLeft: '18px',
+                                  fontSize: '13px',
+                                  lineHeight: 1.55,
+                                  color: 'var(--ink)',
+                                }}
+                              >
+                                {homeConsignmentPlaces.map((p) => (
+                                  <li key={p.place_id} style={{ marginBottom: '8px' }}>
+                                    <a
+                                      href={`https://www.google.com/maps/search/?api=1&query_place_id=${encodeURIComponent(p.place_id)}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      style={{ color: 'var(--accent)', fontWeight: 600, textDecoration: 'none' }}
+                                    >
+                                      {p.name}
+                                    </a>
+                                    {p.rating != null ? (
+                                      <span style={{ color: 'var(--ink-soft)' }}> · {p.rating.toFixed(1)}★</span>
+                                    ) : null}
+                                    <div style={{ fontSize: '12px', color: 'var(--ink-soft)', marginTop: '2px' }}>
+                                      {p.address}
+                                    </div>
+                                    <div style={{ fontSize: '11px', color: 'var(--ink-soft)' }}>{p.distance_mi} mi</div>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <button type="button" onClick={handleAddAnotherItem} style={postDecisionFooterActionStyle}>
                       + Add another item
                     </button>
@@ -1199,6 +1448,9 @@ function HomeContent() {
                         setContextualPlaces([]);
                         setPickupDonationPlaces([]);
                         setRainNext24h(null);
+                        setHomeConsignmentExpanded(false);
+                        setHomeConsignmentPlaces([]);
+                        setHomeConsignmentLoading(false);
                       }}
                       style={postDecisionFooterActionStyle}
                     >
@@ -1223,6 +1475,15 @@ function HomeContent() {
         )}
 
       </div>
+
+      <SentimentalNudge
+        open={homeSentimentalOpen}
+        itemName={result?.item_label ?? 'this item'}
+        onClose={() => setHomeSentimentalOpen(false)}
+        onMoveToKeepRemind={handleHomeMoveToKeepRemind}
+        onMoveToKeepNoRemind={handleHomeMoveToKeepNoRemind}
+        onKeepGoing={handleHomeSentimentalKeepGoing}
+      />
 
       <PaywallModal
         open={showPaywallModal}
