@@ -12,6 +12,62 @@ export const CAR_DONATION_TAX_HINT =
 export const BULK_PICKUP_DONATION_COPY =
   "Too big to drop off? These organizations might pick up large donations in some areas — call ahead to confirm.";
 
+function itemText(itemLabel: string | undefined, description?: string): string {
+  return `${itemLabel ?? ""} ${description ?? ""}`.toLowerCase();
+}
+
+/**
+ * Used, plain sleeping pillows (not decorative), bed sheets, worn blankets, or basic quilts —
+ * thrift often declines these; **animal shelters/rescues** should be the primary donate target in
+ * copy and Places (drop-off only; never suggest pickup for shelters).
+ */
+export function isShelterTextileContext(itemLabel: string | undefined, description?: string): boolean {
+  const t = itemText(itemLabel, description);
+  if (!/\S/.test(t)) return false;
+
+  if (
+    /\b(new in box|nib|with tags|tags still on|never used|like new|designer|luxury|museum quality|display only|still packaged|wedding registry)\b/.test(
+      t
+    )
+  ) {
+    return false;
+  }
+
+  if (
+    /\b(quilt|coverlet)\b/.test(t) &&
+    /\b(antique|vintage|heirloom|wedding quilt|amish|collector|museum|artisan|one[-\s]?of[-\s]?a[-\s]?kind|hand[-\s]?stitched heirloom)\b/.test(t)
+  ) {
+    return false;
+  }
+
+  if (/\belectric blanket\b/.test(t)) return false;
+
+  if (/\bpillow(s)?\b/.test(t) && /\b(decorative|throw pillow|euro sham|accent pillow|floor pillow|lumbar|bolster|sham only|cover only)\b/.test(t)) {
+    return false;
+  }
+
+  if (/\b(towel|towels|washcloth|hand towel|bath towel)\b/.test(t) && !/\b(blanket|sheet|quilt|pillow|pillowcase)\b/.test(t)) {
+    return false;
+  }
+
+  if (/\b(comforter|duvet|bedspread)\b/.test(t)) return false;
+
+  const hasSheets =
+    /\b(flat sheet|fitted sheet|sheet set|bedsheet|bed sheets?|twin sheets|full sheets|queen sheets|king sheets|pillowcases?)\b/.test(t) ||
+    (/\bsheets?\b/.test(t) &&
+      !/\b(music|cookie|balance|google sheets|cookie sheet|baking sheet|dryer sheet|spec sheet)\b/.test(t));
+
+  const hasSleepingPillow =
+    /\bpillow(s)?\b/.test(t) &&
+    !/\b(decorative|throw|euro|accent|floor|travel|neck\s+pillow|nursing pillow|ring pillow|body pillow)\b/.test(t);
+
+  const hasBlanket = /\b(blanket|afghan)\b/.test(t);
+
+  const hasBasicQuilt = /\bquilt(s)?\b/.test(t);
+
+  return hasSheets || hasSleepingPillow || hasBlanket || hasBasicQuilt;
+}
+
 /** True if item sounds like fabric/bedding (used sheets, pillows, towels, blankets) for Places search. */
 export function isFabricBedding(itemLabel: string | undefined): boolean {
   if (!itemLabel?.trim()) return false;
@@ -47,10 +103,6 @@ export function isConsignmentContext(itemLabel: string | undefined, valueRange: 
       t
     ) || /\b(accessories|accessory)\b/.test(t)
   );
-}
-
-function itemText(itemLabel: string | undefined, description?: string): string {
-  return `${itemLabel ?? ""} ${description ?? ""}`.toLowerCase();
 }
 
 /** Cars, trucks, motorcycles, boats, RVs — organizations that accept vehicle donation. */

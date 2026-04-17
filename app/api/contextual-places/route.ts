@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  isShelterTextileContext,
   isFabricBedding,
   isMedicalMobility,
   getCarDonationPlacesQuery,
@@ -77,6 +78,24 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    /** Thrift-heavy queries are wrong for used plain bedding — shelters first, drop-off only. */
+    if (isShelterTextileContext(item_label, description)) {
+      const [rescueHits, shelterHits, humaneHits] = await Promise.all([
+        fetchPlaces(apiKey, "animal rescue", lat, lng),
+        fetchPlaces(apiKey, "animal shelter", lat, lng),
+        fetchPlaces(apiKey, "humane society animal shelter", lat, lng),
+      ]);
+      const byId = new Map<string, PlaceHit>();
+      for (const p of [...rescueHits, ...shelterHits, ...humaneHits]) {
+        if (!byId.has(p.place_id)) byId.set(p.place_id, p);
+      }
+      const places = [...byId.values()]
+        .filter((p) => !isLikelyConsignmentResaleName(p.name))
+        .sort((a, b) => a.distance_mi - b.distance_mi)
+        .slice(0, 8);
+      return NextResponse.json({ places, pickupPlaces: [] });
+    }
+
     const fabric = isFabricBedding(item_label);
 
     if (fabric) {
