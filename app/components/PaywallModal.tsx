@@ -17,7 +17,7 @@ const API_KEY = process.env.NEXT_PUBLIC_REVENUECAT_API_KEY ?? "";
 
 /** Shown when RevenueCat cannot offer web purchases (no key, load failure, or no packages). */
 const WEB_SUBSCRIPTIONS_FALLBACK =
-  "Subscriptions are available on iOS — or enter a promo code below.";
+  "Subscriptions are coming soon — have a code? Enter it below.";
 
 export function PaywallModal({
   open,
