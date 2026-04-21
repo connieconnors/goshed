@@ -6,4 +6,5 @@ export const MOMENT_COPY = {
   item19Nudge: "Almost there — 1 item left on your free plan.",
   item19NudgeSubtext: "After that, it's $2.99/month or $24.99/year.",
   paywallTitle: "You've filled your free shed.",
+  paywallTitleVoluntary: "You're just getting started.",
 } as const;

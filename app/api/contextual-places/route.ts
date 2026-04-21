@@ -27,6 +27,20 @@ function haversineKm(
 
 type PlaceHit = { name: string; place_id: string; distance_mi: number };
 
+/** Google may return the same venue under different `place_id`s across text queries. */
+function dedupePlacesByNameAndDistance(places: PlaceHit[]): PlaceHit[] {
+  const seen = new Set<string>();
+  const out: PlaceHit[] = [];
+  for (const p of places) {
+    const nameKey = p.name.trim().toLowerCase().replace(/\s+/g, " ");
+    const key = `${nameKey}|${p.distance_mi}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(p);
+  }
+  return out;
+}
+
 /** Safety filter — consignment belongs on Sell only, never in Donate lists. */
 function isLikelyConsignmentResaleName(name: string): boolean {
   const n = name.toLowerCase();
@@ -89,10 +103,11 @@ export async function POST(request: NextRequest) {
       for (const p of [...rescueHits, ...shelterHits, ...humaneHits]) {
         if (!byId.has(p.place_id)) byId.set(p.place_id, p);
       }
-      const places = [...byId.values()]
-        .filter((p) => !isLikelyConsignmentResaleName(p.name))
-        .sort((a, b) => a.distance_mi - b.distance_mi)
-        .slice(0, 8);
+      const places = dedupePlacesByNameAndDistance(
+        [...byId.values()]
+          .filter((p) => !isLikelyConsignmentResaleName(p.name))
+          .sort((a, b) => a.distance_mi - b.distance_mi)
+      ).slice(0, 8);
       return NextResponse.json({ places, pickupPlaces: [] });
     }
 
@@ -113,9 +128,9 @@ export async function POST(request: NextRequest) {
       [...binResults, ...rescueResults].forEach((p) => {
         if (!byId.has(p.place_id)) byId.set(p.place_id, p);
       });
-      const places = [...byId.values()]
-        .sort((a, b) => a.distance_mi - b.distance_mi)
-        .slice(0, 8);
+      const places = dedupePlacesByNameAndDistance(
+        [...byId.values()].sort((a, b) => a.distance_mi - b.distance_mi)
+      ).slice(0, 8);
       return NextResponse.json({ places, pickupPlaces: [] });
     }
 
@@ -134,9 +149,9 @@ export async function POST(request: NextRequest) {
               pickupById.set(p.place_id, p);
             }
           }
-          return [...pickupById.values()]
-            .sort((a, b) => a.distance_mi - b.distance_mi)
-            .slice(0, 3);
+          return dedupePlacesByNameAndDistance(
+            [...pickupById.values()].sort((a, b) => a.distance_mi - b.distance_mi)
+          ).slice(0, 3);
         })
       : Promise.resolve([]);
 
@@ -169,12 +184,14 @@ export async function POST(request: NextRequest) {
         byId.set(p.place_id, p);
       }
     }
-    const places = [...byId.values()]
-      .filter((p) => !pickupIds.has(p.place_id))
-      .filter((p) => !isLikelyConsignmentResaleName(p.name))
-      .sort((a, b) => a.distance_mi - b.distance_mi)
-      .slice(0, 5);
-    return NextResponse.json({ places, pickupPlaces });
+    const places = dedupePlacesByNameAndDistance(
+      [...byId.values()]
+        .filter((p) => !pickupIds.has(p.place_id))
+        .filter((p) => !isLikelyConsignmentResaleName(p.name))
+        .sort((a, b) => a.distance_mi - b.distance_mi)
+    ).slice(0, 5);
+    const pickupDeduped = dedupePlacesByNameAndDistance(pickupPlaces);
+    return NextResponse.json({ places, pickupPlaces: pickupDeduped });
   } catch {
     return NextResponse.json({ places: [], pickupPlaces: [] });
   }

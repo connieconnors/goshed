@@ -5,6 +5,7 @@ import "./globals.css";
 import { ClearGuestGateDismissedOnAuth } from "@/app/components/ClearGuestGateDismissedOnAuth";
 import { AuthSessionProvider } from "@/lib/auth-session-context";
 import { PasswordOnboardingGate } from "@/app/components/PasswordOnboardingGate";
+import { SiteFooter } from "@/app/components/SiteFooter";
 
 const GA_MEASUREMENT_ID = "G-CPJMZSBPRJ";
 
@@ -84,22 +85,7 @@ export default function RootLayout({
             </PasswordOnboardingGate>
           </AuthSessionProvider>
         </div>
-        <footer
-          style={{
-            padding: "16px 24px",
-            textAlign: "center",
-            fontSize: "11px",
-            color: "var(--ink-soft)",
-            fontFamily: "var(--font-body)",
-          }}
-        >
-          © 2026 GoShed ·{" "}
-          <a href="/privacy" style={{ color: "inherit", textDecoration: "none" }}>Privacy</a>
-          {" · "}
-          <a href="/terms" style={{ color: "inherit", textDecoration: "none" }}>Terms</a>
-          {" · "}
-          <a href="mailto:support@thriftshopper.com" style={{ color: "inherit", textDecoration: "none" }}>Contact</a>
-        </footer>
+        <SiteFooter />
       </body>
     </html>
   );

@@ -22,6 +22,8 @@ export function PasswordOnboardingGate({ children }: { children: React.ReactNode
     pathname === "/login" || pathname === "/set-password" || pathname.startsWith("/auth/");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  /** Opt-in to nudges; pre-checked, saved with password or skip. */
+  const [notificationConsent, setNotificationConsent] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [skipLoading, setSkipLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,6 +61,10 @@ export function PasswordOnboardingGate({ children }: { children: React.ReactNode
       cancelled = true;
     };
   }, [user?.id, loading, isAuthEntryRoute]);
+
+  useEffect(() => {
+    if (eligible === true) setNotificationConsent(true);
+  }, [eligible, user?.id]);
 
   const showGate =
     !isAuthEntryRoute &&
@@ -108,7 +114,12 @@ export function PasswordOnboardingGate({ children }: { children: React.ReactNode
         setError(upErr.message);
         return;
       }
-      const pr = await fetch("/api/auth/password-set", { method: "POST", credentials: "include" });
+      const pr = await fetch("/api/auth/password-set", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notificationConsent }),
+      });
       if (!pr.ok) {
         const pb = await pr.json().catch(() => ({}));
         setError(typeof pb?.error === "string" ? pb.error : "Could not save password to your profile.");
@@ -126,7 +137,7 @@ export function PasswordOnboardingGate({ children }: { children: React.ReactNode
     } finally {
       setSubmitting(false);
     }
-  }, [password, confirm, user?.email, refresh, router]);
+  }, [password, confirm, notificationConsent, user?.email, refresh, router]);
 
   const handleSkip = useCallback(async () => {
     console.log("[PasswordOnboarding] Skip for now clicked");
@@ -137,7 +148,7 @@ export function PasswordOnboardingGate({ children }: { children: React.ReactNode
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ skipPasswordOnboarding: true }),
+        body: JSON.stringify({ skipPasswordOnboarding: true, notificationConsent }),
       });
       const body = await res.json().catch(() => ({}));
       console.log("[PasswordOnboarding] welcome-shown response (skip)", res.status, body);
@@ -153,7 +164,7 @@ export function PasswordOnboardingGate({ children }: { children: React.ReactNode
     } finally {
       setSkipLoading(false);
     }
-  }, [refresh, router]);
+  }, [notificationConsent, refresh, router]);
 
   if (DISABLE_PASSWORD_ONBOARDING_GATE) {
     return <>{children}</>;
@@ -263,6 +274,37 @@ export function PasswordOnboardingGate({ children }: { children: React.ReactNode
             >
               {submitting ? "Saving…" : "Set password"}
             </button>
+            <label
+              htmlFor="password-onboarding-notify-consent"
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 10,
+                marginTop: 14,
+                marginBottom: 2,
+                cursor: submitting || skipLoading ? "default" : "pointer",
+                userSelect: "none",
+              }}
+            >
+              <input
+                id="password-onboarding-notify-consent"
+                type="checkbox"
+                checked={notificationConsent}
+                onChange={(e) => setNotificationConsent(e.target.checked)}
+                disabled={submitting || skipLoading}
+                style={{
+                  marginTop: 2,
+                  width: 16,
+                  height: 16,
+                  flexShrink: 0,
+                  accentColor: "var(--ink)",
+                  cursor: submitting || skipLoading ? "not-allowed" : "pointer",
+                }}
+              />
+              <span style={{ fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.45 }}>
+                Check in with me — I work better with a nudge.
+              </span>
+            </label>
             <button
               type="button"
               onClick={handleSkip}

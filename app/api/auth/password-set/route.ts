@@ -1,12 +1,25 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { createClient } from "@supabase/supabase-js";
+
+async function parseNotificationConsent(request: NextRequest): Promise<boolean | undefined> {
+  const contentType = request.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) return undefined;
+  try {
+    const body = (await request.json()) as { notificationConsent?: unknown };
+    return typeof body?.notificationConsent === "boolean" ? body.notificationConsent : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Record that the current user has set a password (DB + login hint table).
  * Updates public.users so state persists across devices and powers /api/auth/has-password.
+ * Optional JSON body: `{ "notificationConsent": boolean }` — when sent, persists `notification_consent`.
  */
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const notificationConsent = await parseNotificationConsent(request);
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -22,11 +35,19 @@ export async function POST() {
     return NextResponse.json({ error: "Invalid email" }, { status: 400 });
   }
 
-  const rowUpdate = {
+  const rowUpdate: {
+    has_password_set: boolean;
+    skipped_password_at: string | null;
+    welcome_sent: boolean;
+    notification_consent?: boolean;
+  } = {
     has_password_set: true,
-    skipped_password_at: null as string | null,
+    skipped_password_at: null,
     welcome_sent: true,
   };
+  if (typeof notificationConsent === "boolean") {
+    rowUpdate.notification_consent = notificationConsent;
+  }
 
   const { error: usersErr } = await supabase.from("users").update(rowUpdate).eq("id", user.id);
 

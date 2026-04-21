@@ -215,6 +215,8 @@ function HomeContent() {
   const [pickupDonationPlaces, setPickupDonationPlaces] = useState<{ name: string; distance_mi: number; place_id: string }[]>([]);
   const [rainNext24h, setRainNext24h] = useState<boolean | null>(null);
   const [showPaywallModal, setShowPaywallModal] = useState(false);
+  /** True when opened from footer Upgrade (voluntary title); false for item-limit / ?paywall=1. */
+  const [paywallVoluntary, setPaywallVoluntary] = useState(false);
   const [paywallItemCount, setPaywallItemCount] = useState(20);
   const [showAiConsent, setShowAiConsent] = useState(false);
   const [showGuestGateModal, setShowGuestGateModal] = useState(false);
@@ -263,7 +265,26 @@ function HomeContent() {
     if (typeof window === "undefined") return;
     const q = window.location.search;
     setForceGuestMode(q.includes("guest=1") || q.includes("guest=true"));
-    if (q.includes("paywall=1") || q.includes("paywall=true")) setShowPaywallModal(true);
+    if (q.includes("paywall=1") || q.includes("paywall=true")) {
+      setPaywallVoluntary(false);
+      setShowPaywallModal(true);
+    } else if (q.includes("upgrade=1") || q.includes("upgrade=true")) {
+      setPaywallVoluntary(true);
+      setShowPaywallModal(true);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("upgrade");
+      const search = url.searchParams.toString();
+      router.replace(`${url.pathname}${search ? `?${search}` : ""}${url.hash}`, { scroll: false });
+    }
+  }, [router]);
+
+  useEffect(() => {
+    const onVoluntary = () => {
+      setPaywallVoluntary(true);
+      setShowPaywallModal(true);
+    };
+    window.addEventListener("goshed-open-voluntary-paywall", onVoluntary);
+    return () => window.removeEventListener("goshed-open-voluntary-paywall", onVoluntary);
   }, []);
 
   useEffect(() => {
@@ -421,6 +442,7 @@ function HomeContent() {
         return;
       }
       if (res.status === 402) {
+        setPaywallVoluntary(false);
         setPaywallItemCount(typeof data.itemCount === 'number' ? data.itemCount : 20);
         setShowPaywallModal(true);
         setLoading(false);
@@ -575,11 +597,16 @@ function HomeContent() {
     setHomeConsignmentPlaces([]);
   };
 
-  const handlePaywallSuccess = useCallback(() => {
+  const closePaywallModal = useCallback(() => {
     setShowPaywallModal(false);
+    setPaywallVoluntary(false);
+  }, []);
+
+  const handlePaywallSuccess = useCallback(() => {
+    closePaywallModal();
     const dataUrl = analysisImageDataUrlRef.current;
     if (dataUrl) runAnalyzeWithDataUrl(dataUrl);
-  }, [runAnalyzeWithDataUrl]);
+  }, [closePaywallModal, runAnalyzeWithDataUrl]);
 
   // Save to Supabase when we have analysis + recommendation and user is logged in (once per item).
   // Key is by item_label only so changing recommendation (Other options) updates via PATCH, doesn't create a second item.
@@ -1490,9 +1517,10 @@ function HomeContent() {
 
       <PaywallModal
         open={showPaywallModal}
-        onClose={() => setShowPaywallModal(false)}
+        onClose={closePaywallModal}
         onPurchaseSuccess={handlePaywallSuccess}
         itemCount={paywallItemCount}
+        voluntary={paywallVoluntary}
       />
       {showGuestGateModal && (
         <div

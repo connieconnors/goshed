@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { MOMENT_COPY } from "@/lib/momentCopy";
 import { useAuthSession } from "@/lib/auth-session-context";
 import { Purchases } from "@revenuecat/purchases-js";
@@ -11,25 +12,39 @@ type PaywallModalProps = {
   onClose: () => void;
   onPurchaseSuccess?: () => void;
   itemCount?: number;
+  /** When true, title uses voluntary upgrade copy (footer Upgrade); limit-driven paywalls omit this. */
+  voluntary?: boolean;
 };
 
 const API_KEY = process.env.NEXT_PUBLIC_REVENUECAT_API_KEY ?? "";
 
-/** Shown when RevenueCat cannot offer web purchases (no key, load failure, or no packages). */
-const WEB_SUBSCRIPTIONS_FALLBACK =
-  "Subscriptions are coming soon — have a code? Enter it below.";
+/** Plain-object summary for console debugging (RevenueCat SDK objects are not always JSON-serializable). */
+function summarizeOfferings(offerings: Offerings) {
+  const all = offerings.all ?? {};
+  const cur = offerings.current;
+  const packages = cur?.availablePackages ?? [];
+  return {
+    currentOfferingIdentifier: cur?.identifier ?? null,
+    allOfferingIdentifiers: Object.keys(all),
+    currentAvailablePackageIdentifiers: packages.map((p) => p.identifier),
+    currentServerDescription: cur?.serverDescription ?? null,
+    resolvedMonthlySlot: cur?.monthly?.identifier ?? null,
+    resolvedAnnualSlot: cur?.annual?.identifier ?? null,
+    packageCountOnCurrent: packages.length,
+  };
+}
 
 export function PaywallModal({
   open,
   onClose,
   onPurchaseSuccess,
   itemCount: _itemCount = 20,
+  voluntary = false,
 }: PaywallModalProps) {
+  const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
   const [monthlyPackage, setMonthlyPackage] = useState<Package | null>(null);
   const [yearlyPackage, setYearlyPackage] = useState<Package | null>(null);
-  /** When set, show this instead of RevenueCat (e.g. not signed in). */
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [plansLoading, setPlansLoading] = useState(false);
   const [plansSettled, setPlansSettled] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
@@ -39,6 +54,8 @@ export function PaywallModal({
   const [promoLoading, setPromoLoading] = useState(false);
   const [promoError, setPromoError] = useState<string | null>(null);
   const [promoSuccess, setPromoSuccess] = useState<string | null>(null);
+  /** Last RevenueCat offerings summary or fetch outcome (for paywall disabled diagnostics). */
+  const lastOfferingsSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const { refresh } = useAuthSession();
 
   const ensureConfigured = useCallback(async (appUserId: string): Promise<boolean> => {
@@ -58,12 +75,22 @@ export function PaywallModal({
     }
   }, []);
 
+  const goToLogin = useCallback(() => {
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem(
+        "redirect_after_login",
+        `${window.location.pathname}${window.location.search}${window.location.hash}`
+      );
+    }
+    onClose();
+    router.push("/login");
+  }, [onClose, router]);
+
   useEffect(() => {
     if (!open) {
       setUserId(null);
       setMonthlyPackage(null);
       setYearlyPackage(null);
-      setStatusMessage(null);
       setPlansLoading(false);
       setPlansSettled(false);
       setPurchaseError(null);
@@ -87,7 +114,6 @@ export function PaywallModal({
     const run = async () => {
       setPlansSettled(false);
       setPlansLoading(true);
-      setStatusMessage(null);
       setMonthlyPackage(null);
       setYearlyPackage(null);
       setPurchaseError(null);
@@ -98,13 +124,14 @@ export function PaywallModal({
       setUserId(uid);
 
       if (!uid) {
-        setStatusMessage("Sign in to subscribe.");
+        lastOfferingsSnapshotRef.current = { reason: "not_signed_in" };
         finish();
         return;
       }
 
       if (!API_KEY.trim()) {
-        setShowPromoInput(true);
+        lastOfferingsSnapshotRef.current = { reason: "missing_NEXT_PUBLIC_REVENUECAT_API_KEY" };
+        console.warn("[PaywallModal] RevenueCat disabled:", lastOfferingsSnapshotRef.current);
         finish();
         return;
       }
@@ -112,16 +139,22 @@ export function PaywallModal({
       const ok = await ensureConfigured(uid);
       if (cancelled) return;
       if (!ok) {
-        setShowPromoInput(true);
+        lastOfferingsSnapshotRef.current = { reason: "Purchases.configure_or_changeUser_failed" };
+        console.warn("[PaywallModal] RevenueCat configure failed:", lastOfferingsSnapshotRef.current);
         finish();
         return;
       }
 
       const timeoutId = setTimeout(() => {
         if (cancelled) return;
+        lastOfferingsSnapshotRef.current = {
+          reason: "getOfferings_timeout_ms",
+          timeoutMs: OFFERINGS_TIMEOUT_MS,
+          note: "Timed out before getOfferings resolved; monthly/yearly cleared",
+        };
+        console.warn("[PaywallModal] RevenueCat getOfferings timed out:", lastOfferingsSnapshotRef.current);
         setMonthlyPackage(null);
         setYearlyPackage(null);
-        setShowPromoInput(true);
         finish();
       }, OFFERINGS_TIMEOUT_MS);
 
@@ -133,17 +166,27 @@ export function PaywallModal({
         const current = offerings.current;
         const monthly = current?.monthly ?? null;
         const yearly = current?.annual ?? null;
+        const summary = summarizeOfferings(offerings);
+        lastOfferingsSnapshotRef.current = {
+          source: "getOfferings_ok",
+          ...summary,
+          annualPackageFound: !!yearly,
+          monthlyPackageFound: !!monthly,
+        };
+        console.log("[PaywallModal] RevenueCat getOfferings:", lastOfferingsSnapshotRef.current);
         setMonthlyPackage(monthly);
         setYearlyPackage(yearly);
-        if (!monthly && !yearly) {
-          setShowPromoInput(true);
-        }
-      } catch {
+      } catch (err: unknown) {
         clearTimeout(timeoutId);
         if (cancelled) return;
+        const message = err instanceof Error ? err.message : String(err);
+        lastOfferingsSnapshotRef.current = {
+          source: "getOfferings_throw",
+          errorMessage: message,
+        };
+        console.warn("[PaywallModal] RevenueCat getOfferings failed:", lastOfferingsSnapshotRef.current, err);
         setMonthlyPackage(null);
         setYearlyPackage(null);
-        setShowPromoInput(true);
       } finally {
         if (!cancelled) clearTimeout(timeoutId);
         finish();
@@ -155,12 +198,6 @@ export function PaywallModal({
       cancelled = true;
     };
   }, [open, ensureConfigured, refresh]);
-
-  useEffect(() => {
-    if (open && userId && plansSettled && !(monthlyPackage || yearlyPackage)) {
-      setShowPromoInput(true);
-    }
-  }, [open, userId, plansSettled, monthlyPackage, yearlyPackage]);
 
   const handlePurchase = useCallback(
     async (pkg: Package | null) => {
@@ -211,12 +248,48 @@ export function PaywallModal({
     }
   }, [promoCode, promoLoading, onClose, onPurchaseSuccess]);
 
+  /** When signed-in paywall buttons render disabled, log RevenueCat snapshot + flags (see red disabled state in devtools). */
+  useEffect(() => {
+    if (!open || !userId || !plansSettled || plansLoading) return;
+    const yearDisabled = purchasing || !yearlyPackage;
+    const monthDisabled = purchasing || !monthlyPackage;
+    if (!yearDisabled && !monthDisabled) return;
+    console.warn("[PaywallModal] Purchase button(s) disabled — diagnostic", {
+      plansLoading,
+      plansSettled,
+      purchasing,
+      annualPackageFound: !!yearlyPackage,
+      monthlyPackageFound: !!monthlyPackage,
+      yearlyPackageIdentifier: yearlyPackage?.identifier ?? null,
+      monthlyPackageIdentifier: monthlyPackage?.identifier ?? null,
+      lastRevenueCatSnapshot: lastOfferingsSnapshotRef.current,
+    });
+  }, [open, userId, plansSettled, plansLoading, yearlyPackage, monthlyPackage, purchasing]);
+
   if (!open) return null;
 
   const signedIn = !!userId;
-  const hasRcPackages = !!(monthlyPackage || yearlyPackage);
-  const showNativePurchaseButtons = signedIn && plansSettled && hasRcPackages;
-  const showWebFallback = signedIn && plansSettled && !hasRcPackages;
+  const showPlansSpinner = signedIn && (plansLoading || !plansSettled);
+  const showPurchaseRow = plansSettled && !showPlansSpinner;
+
+  const onYearClick = () => {
+    if (!signedIn) {
+      goToLogin();
+      return;
+    }
+    void handlePurchase(yearlyPackage);
+  };
+
+  const onMonthClick = () => {
+    if (!signedIn) {
+      goToLogin();
+      return;
+    }
+    void handlePurchase(monthlyPackage);
+  };
+
+  const yearDisabled = purchasing || !yearlyPackage;
+  const monthDisabled = purchasing || !monthlyPackage;
 
   return (
     <div
@@ -284,53 +357,41 @@ export function PaywallModal({
             marginBottom: 12,
           }}
         >
-          {MOMENT_COPY.paywallTitle}
+          {voluntary ? MOMENT_COPY.paywallTitleVoluntary : MOMENT_COPY.paywallTitle}
         </h2>
         <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.5, marginBottom: 24 }}>
           Keep going for $2.99 a month — or $24.99 for the year.
         </p>
 
-        {plansLoading && signedIn && (
+        {showPlansSpinner ? (
           <p style={{ color: "var(--ink-soft)", fontSize: 14, marginBottom: 16 }}>Loading plans…</p>
+        ) : null}
+
+        {purchaseError && (
+          <p style={{ color: "#c00", fontSize: 14, marginBottom: 12 }}>{purchaseError}</p>
         )}
 
-        {!signedIn && plansSettled && statusMessage ? (
-          <p style={{ color: "var(--ink-soft)", fontSize: 14, marginBottom: 16 }}>{statusMessage}</p>
-        ) : null}
-
-        {showWebFallback && !plansLoading ? (
-          <p
-            style={{
-              color: "var(--ink)",
-              fontSize: 15,
-              lineHeight: 1.55,
-              marginBottom: 20,
-              padding: "14px 16px",
-              background: "var(--surface)",
-              borderRadius: 12,
-              border: "1px solid var(--surface2)",
-            }}
-          >
-            {WEB_SUBSCRIPTIONS_FALLBACK}
-          </p>
-        ) : null}
-
-        {showNativePurchaseButtons ? (
+        {showPurchaseRow ? (
           <>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <button
                 type="button"
-                disabled={!yearlyPackage || purchasing}
-                onClick={() => handlePurchase(yearlyPackage)}
+                disabled={signedIn ? yearDisabled : false}
+                onClick={onYearClick}
                 className="goshed-primary-btn"
-                style={{ width: "100%", justifyContent: "center", padding: "14px 20px" }}
+                style={{
+                  width: "100%",
+                  justifyContent: "center",
+                  padding: "14px 20px",
+                  cursor: signedIn && yearDisabled ? "not-allowed" : "pointer",
+                }}
               >
                 {purchasing ? "Processing…" : "Get the year — $24.99"}
               </button>
               <button
                 type="button"
-                disabled={!monthlyPackage || purchasing}
-                onClick={() => handlePurchase(monthlyPackage)}
+                disabled={signedIn ? monthDisabled : false}
+                onClick={onMonthClick}
                 style={{
                   width: "100%",
                   padding: "14px 20px",
@@ -339,7 +400,7 @@ export function PaywallModal({
                   border: "1px solid var(--surface2)",
                   borderRadius: 12,
                   fontSize: 16,
-                  cursor: monthlyPackage && !purchasing ? "pointer" : "not-allowed",
+                  cursor: signedIn && monthDisabled ? "not-allowed" : "pointer",
                   fontFamily: "inherit",
                 }}
               >
@@ -349,34 +410,29 @@ export function PaywallModal({
             <p style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 8, textAlign: "center", lineHeight: 1.5 }}>
               Cancel anytime.
             </p>
+            {!showPromoInput ? (
+              <button
+                type="button"
+                onClick={() => setShowPromoInput(true)}
+                style={{
+                  marginTop: 14,
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  color: "var(--ink-soft)",
+                  fontSize: 14,
+                  cursor: "pointer",
+                  textDecoration: "underline",
+                }}
+              >
+                Have a code?
+              </button>
+            ) : null}
           </>
         ) : null}
 
-        {purchaseError && (
-          <p style={{ color: "#c00", fontSize: 14, marginTop: 10 }}>{purchaseError}</p>
-        )}
-
-        {showNativePurchaseButtons && !showPromoInput ? (
-          <button
-            type="button"
-            onClick={() => setShowPromoInput(true)}
-            style={{
-              marginTop: 14,
-              background: "none",
-              border: "none",
-              padding: 0,
-              color: "var(--ink-soft)",
-              fontSize: 14,
-              cursor: "pointer",
-              textDecoration: "underline",
-            }}
-          >
-            Have a code?
-          </button>
-        ) : null}
-
-        {(showPromoInput || showWebFallback) && (
-          <div style={{ marginTop: showNativePurchaseButtons ? 14 : 0 }}>
+        {showPromoInput ? (
+          <div style={{ marginTop: showPurchaseRow ? 14 : 0 }}>
             <input
               type="text"
               value={promoCode}
@@ -419,7 +475,7 @@ export function PaywallModal({
               <p style={{ color: "var(--green)", fontSize: 14, marginTop: 8 }}>{promoSuccess}</p>
             )}
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

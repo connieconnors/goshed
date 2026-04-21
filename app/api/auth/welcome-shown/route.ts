@@ -2,19 +2,31 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { createClient } from "@supabase/supabase-js";
 
-async function parseSkipFlag(request: NextRequest): Promise<boolean> {
+async function parseBody(request: NextRequest): Promise<{
+  skipPasswordOnboarding: boolean;
+  notificationConsent?: boolean;
+}> {
   const contentType = request.headers.get("content-type") ?? "";
-  if (!contentType.includes("application/json")) return false;
+  if (!contentType.includes("application/json")) {
+    return { skipPasswordOnboarding: false };
+  }
   try {
-    const body = (await request.json()) as { skipPasswordOnboarding?: unknown };
-    return body?.skipPasswordOnboarding === true;
+    const body = (await request.json()) as {
+      skipPasswordOnboarding?: unknown;
+      notificationConsent?: unknown;
+    };
+    return {
+      skipPasswordOnboarding: body?.skipPasswordOnboarding === true,
+      notificationConsent:
+        typeof body?.notificationConsent === "boolean" ? body.notificationConsent : undefined,
+    };
   } catch {
-    return false;
+    return { skipPasswordOnboarding: false };
   }
 }
 
 export async function POST(request: NextRequest) {
-  const skipPasswordOnboarding = await parseSkipFlag(request);
+  const { skipPasswordOnboarding, notificationConsent } = await parseBody(request);
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -25,13 +37,16 @@ export async function POST(request: NextRequest) {
   }
 
   const nowIso = new Date().toISOString();
+  const consentPatch =
+    typeof notificationConsent === "boolean" ? { notification_consent: notificationConsent } : {};
   const patch = skipPasswordOnboarding
     ? {
         welcome_sent: true,
         has_password_set: false,
         skipped_password_at: nowIso,
+        ...consentPatch,
       }
-    : { welcome_sent: true };
+    : { welcome_sent: true, ...consentPatch };
 
   const { error } = await supabase.from("users").update(patch).eq("id", user.id);
   if (!error) {
