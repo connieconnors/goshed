@@ -222,6 +222,11 @@ function HomeContent() {
   const [showAiConsent, setShowAiConsent] = useState(false);
   /** Resolves when user accepts AI note during Upgrade guest → purchase (see `waitForAiConsentBeforeGuestPurchase`). */
   const aiConsentGuestPurchaseResolverRef = useRef<(() => void) | null>(null);
+  /**
+   * True once the user accepts the AI sheet this tab session (set synchronously with localStorage).
+   * Upgrade signup clears `goshed_ai_consent` but must not re-show the sheet in `beforeGuestPurchase`.
+   */
+  const aiConsentAgreedThisSessionRef = useRef(false);
   const [showGuestGateModal, setShowGuestGateModal] = useState(false);
   /** Guest limit: completed flows (analyze + initial recommendation), not uploads alone. */
   const GUEST_ANALYSIS_LIMIT = 10;
@@ -291,10 +296,11 @@ function HomeContent() {
   }, []);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      if (!localStorage.getItem("goshed_ai_consent")) {
-        setShowAiConsent(true);
-      }
+    if (typeof window === "undefined") return;
+    if (localStorage.getItem("goshed_ai_consent")) {
+      aiConsentAgreedThisSessionRef.current = true;
+    } else {
+      setShowAiConsent(true);
     }
   }, []);
 
@@ -414,6 +420,7 @@ function HomeContent() {
   const handleZoneClick = () => inputRef.current?.click();
 
   const handleAiConsentAccept = async () => {
+    aiConsentAgreedThisSessionRef.current = true;
     localStorage.setItem("goshed_ai_consent", "1");
     try {
       const supabase = createSupabaseBrowserClient();
@@ -437,24 +444,8 @@ function HomeContent() {
     if (typeof window !== "undefined" && localStorage.getItem("goshed_ai_consent")) {
       return;
     }
-    try {
-      const supabase = createSupabaseBrowserClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (user) {
-        const { data, error } = await supabase
-          .from("users")
-          .select("ai_consent_shown")
-          .eq("id", user.id)
-          .maybeSingle();
-        if (!error && data?.ai_consent_shown === true) {
-          if (typeof window !== "undefined") localStorage.setItem("goshed_ai_consent", "1");
-          return;
-        }
-      }
-    } catch {
-      /* fall through to modal */
+    if (aiConsentAgreedThisSessionRef.current) {
+      return;
     }
     await new Promise<void>((resolve) => {
       aiConsentGuestPurchaseResolverRef.current = resolve;
