@@ -130,8 +130,12 @@ export function PasswordOnboardingGate({ children }: { children: React.ReactNode
       setPassword("");
       setConfirm("");
       setEligible(false);
-      const snap = await refresh();
-      console.log("[PasswordOnboarding] refresh() after set password", { welcomeSent: snap.welcomeSent });
+      let snap = await refresh();
+      for (let i = 0; i < 3 && !snap.user; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        snap = await refresh();
+      }
+      console.log("[PasswordOnboarding] refresh() after set password", { welcomeSent: snap.welcomeSent, user: snap.user });
       router.replace("/");
       router.refresh();
     } finally {
