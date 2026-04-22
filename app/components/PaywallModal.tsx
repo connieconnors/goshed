@@ -66,7 +66,7 @@ export function PaywallModal({
   const [guestSignupError, setGuestSignupError] = useState<string | null>(null);
   /** After Upgrade inline signup: nudge consent, then purchase (password gate is skipped). */
   const [upgradeNudgeModalOpen, setUpgradeNudgeModalOpen] = useState(false);
-  const [upgradeNudgeConsentChecked, setUpgradeNudgeConsentChecked] = useState(true);
+  const [upgradeNudgeConsentChecked, setUpgradeNudgeConsentChecked] = useState(false);
   const [upgradeNudgeSubmitting, setUpgradeNudgeSubmitting] = useState(false);
   const [upgradeNudgeError, setUpgradeNudgeError] = useState<string | null>(null);
   const pendingUpgradePlanRef = useRef<"annual" | "monthly" | null>(null);
@@ -112,7 +112,7 @@ export function PaywallModal({
       setGuestSignupSubmitting(false);
       setGuestSignupError(null);
       setUpgradeNudgeModalOpen(false);
-      setUpgradeNudgeConsentChecked(true);
+      setUpgradeNudgeConsentChecked(false);
       setUpgradeNudgeSubmitting(false);
       setUpgradeNudgeError(null);
       pendingUpgradePlanRef.current = null;
@@ -313,7 +313,7 @@ export function PaywallModal({
       setGuestConfirmPassword("");
       setGuestPendingPlan(null);
 
-      setUpgradeNudgeConsentChecked(true);
+      setUpgradeNudgeConsentChecked(false);
       setUpgradeNudgeError(null);
       setUpgradeNudgeModalOpen(true);
     } finally {
@@ -879,7 +879,7 @@ export function PaywallModal({
           <div
             role="dialog"
             aria-modal="true"
-            aria-labelledby="upgrade-nudge-title"
+            aria-label="Occasional nudge preference"
             onClick={(e) => e.stopPropagation()}
             style={{
               width: "100%",
@@ -891,18 +891,6 @@ export function PaywallModal({
               boxShadow: "0 12px 40px rgba(44,36,22,0.18)",
             }}
           >
-            <h3
-              id="upgrade-nudge-title"
-              style={{
-                fontFamily: "var(--font-cormorant)",
-                fontSize: 20,
-                fontWeight: 600,
-                color: "var(--ink)",
-                margin: "0 0 8px",
-              }}
-            >
-              Reminders
-            </h3>
             <label
               htmlFor="upgrade-nudge-consent"
               style={{
@@ -933,7 +921,7 @@ export function PaywallModal({
                 }}
               />
               <span style={{ fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.45 }}>
-                {MOMENT_COPY.notificationNudgeCheckboxLabel}
+                Check the box for an occasional nudge to keep clearing your shed.
               </span>
             </label>
             {upgradeNudgeError ? (
