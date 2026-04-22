@@ -219,6 +219,8 @@ function HomeContent() {
   const [paywallVoluntary, setPaywallVoluntary] = useState(false);
   const [paywallItemCount, setPaywallItemCount] = useState(20);
   const [showAiConsent, setShowAiConsent] = useState(false);
+  /** Resolves when user accepts AI note during Upgrade guest → purchase (see `waitForAiConsentBeforeGuestPurchase`). */
+  const aiConsentGuestPurchaseResolverRef = useRef<(() => void) | null>(null);
   const [showGuestGateModal, setShowGuestGateModal] = useState(false);
   /** Guest limit: completed flows (analyze + initial recommendation), not uploads alone. */
   const GUEST_ANALYSIS_LIMIT = 10;
@@ -413,7 +415,21 @@ function HomeContent() {
   const handleAiConsentAccept = () => {
     localStorage.setItem("goshed_ai_consent", "1");
     setShowAiConsent(false);
+    const resolve = aiConsentGuestPurchaseResolverRef.current;
+    aiConsentGuestPurchaseResolverRef.current = null;
+    resolve?.();
   };
+
+  /** Blocks until the same AI consent sheet as initial load is accepted (if `goshed_ai_consent` is not set). */
+  const waitForAiConsentBeforeGuestPurchase = useCallback(async () => {
+    if (typeof window !== "undefined" && localStorage.getItem("goshed_ai_consent")) {
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      aiConsentGuestPurchaseResolverRef.current = resolve;
+      setShowAiConsent(true);
+    });
+  }, []);
 
   /** Run analyze + recommend with an existing data URL (e.g. after paywall success). */
   const runAnalyzeWithDataUrl = useCallback(async (dataUrl: string) => {
@@ -1521,6 +1537,7 @@ function HomeContent() {
         onPurchaseSuccess={handlePaywallSuccess}
         itemCount={paywallItemCount}
         voluntary={paywallVoluntary}
+        beforeGuestPurchase={waitForAiConsentBeforeGuestPurchase}
       />
       {showGuestGateModal && (
         <div

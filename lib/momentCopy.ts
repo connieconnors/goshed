@@ -7,4 +7,6 @@ export const MOMENT_COPY = {
   item19NudgeSubtext: "After that, it's $2.99/month or $24.99/year.",
   paywallTitle: "You've filled your free shed.",
   paywallTitleVoluntary: "You're just getting started.",
+  /** Notification / nudge opt-in (password onboarding + Upgrade inline signup). */
+  notificationNudgeCheckboxLabel: "Check in with me — I work better with a nudge.",
 } as const;

@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
 import { useAuthSession } from "@/lib/auth-session-context";
 import { addEmailWithPassword } from "@/lib/authPasswordHint";
+import { MOMENT_COPY } from "@/lib/momentCopy";
 
 /** Set `true` to bypass the password onboarding modal (e.g. debugging header navigation). */
 const DISABLE_PASSWORD_ONBOARDING_GATE = false;
@@ -314,7 +315,7 @@ export function PasswordOnboardingGate({ children }: { children: React.ReactNode
                 }}
               />
               <span style={{ fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.45 }}>
-                Check in with me — I work better with a nudge.
+                {MOMENT_COPY.notificationNudgeCheckboxLabel}
               </span>
             </label>
             <button

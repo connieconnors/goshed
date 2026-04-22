@@ -14,6 +14,8 @@ type PaywallModalProps = {
   itemCount?: number;
   /** When true, title uses voluntary upgrade copy (footer Upgrade); limit-driven paywalls omit this. */
   voluntary?: boolean;
+  /** After inline guest signup + sign-in, await before RevenueCat purchase (e.g. AI consent on home). */
+  beforeGuestPurchase?: () => Promise<void>;
 };
 
 const API_KEY = process.env.NEXT_PUBLIC_REVENUECAT_API_KEY ?? "";
@@ -40,6 +42,7 @@ export function PaywallModal({
   onPurchaseSuccess,
   itemCount: _itemCount = 20,
   voluntary = false,
+  beforeGuestPurchase,
 }: PaywallModalProps) {
   const [userId, setUserId] = useState<string | null>(null);
   const [monthlyPackage, setMonthlyPackage] = useState<Package | null>(null);
@@ -61,6 +64,12 @@ export function PaywallModal({
   const [guestConfirmPassword, setGuestConfirmPassword] = useState("");
   const [guestSignupSubmitting, setGuestSignupSubmitting] = useState(false);
   const [guestSignupError, setGuestSignupError] = useState<string | null>(null);
+  /** After Upgrade inline signup: nudge consent, then purchase (password gate is skipped). */
+  const [upgradeNudgeModalOpen, setUpgradeNudgeModalOpen] = useState(false);
+  const [upgradeNudgeConsentChecked, setUpgradeNudgeConsentChecked] = useState(true);
+  const [upgradeNudgeSubmitting, setUpgradeNudgeSubmitting] = useState(false);
+  const [upgradeNudgeError, setUpgradeNudgeError] = useState<string | null>(null);
+  const pendingUpgradePurchasePackageRef = useRef<Package | null>(null);
   /** Last RevenueCat offerings summary or fetch outcome (for paywall disabled diagnostics). */
   const lastOfferingsSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const { refresh } = useAuthSession();
@@ -101,6 +110,11 @@ export function PaywallModal({
       setGuestConfirmPassword("");
       setGuestSignupSubmitting(false);
       setGuestSignupError(null);
+      setUpgradeNudgeModalOpen(false);
+      setUpgradeNudgeConsentChecked(true);
+      setUpgradeNudgeSubmitting(false);
+      setUpgradeNudgeError(null);
+      pendingUpgradePurchasePackageRef.current = null;
       return;
     }
 
@@ -273,19 +287,20 @@ export function PaywallModal({
         return;
       }
 
+      if (created) {
+        try {
+          localStorage.removeItem("goshed_ai_consent");
+        } catch {
+          /* ignore */
+        }
+      }
+
       const snap = await refresh();
       const uid = snap.user?.id ?? null;
       if (!uid) {
         setGuestSignupError("Could not start your session. Try again or use the login page.");
         return;
       }
-
-      void fetch("/api/auth/password-set", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-      }).catch(() => {});
 
       if (!API_KEY.trim()) {
         setGuestSignupError("Subscriptions are not available in this build.");
@@ -323,7 +338,10 @@ export function PaywallModal({
       setGuestConfirmPassword("");
       setGuestPendingPlan(null);
 
-      await handlePurchase(pkg);
+      pendingUpgradePurchasePackageRef.current = pkg;
+      setUpgradeNudgeConsentChecked(true);
+      setUpgradeNudgeError(null);
+      setUpgradeNudgeModalOpen(true);
     } finally {
       setGuestSignupSubmitting(false);
     }
@@ -335,7 +353,39 @@ export function PaywallModal({
     refresh,
     ensureConfigured,
     handlePurchase,
+    beforeGuestPurchase,
   ]);
+
+  const finishUpgradeNudgeAndPurchase = useCallback(async () => {
+    const pkg = pendingUpgradePurchasePackageRef.current;
+    if (!pkg) {
+      setUpgradeNudgeModalOpen(false);
+      return;
+    }
+    setUpgradeNudgeSubmitting(true);
+    setUpgradeNudgeError(null);
+    try {
+      const pr = await fetch("/api/auth/password-set", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notificationConsent: upgradeNudgeConsentChecked }),
+      });
+      const pb = await pr.json().catch(() => ({}));
+      if (!pr.ok) {
+        setUpgradeNudgeError(
+          typeof pb?.error === "string" ? pb.error : "Couldn’t save your preference. Try again."
+        );
+        return;
+      }
+      pendingUpgradePurchasePackageRef.current = null;
+      setUpgradeNudgeModalOpen(false);
+      await beforeGuestPurchase?.();
+      await handlePurchase(pkg);
+    } finally {
+      setUpgradeNudgeSubmitting(false);
+    }
+  }, [upgradeNudgeConsentChecked, beforeGuestPurchase, handlePurchase]);
 
   const handleApplyPromo = useCallback(async () => {
     const code = promoCode.trim();
@@ -793,6 +843,112 @@ export function PaywallModal({
               }}
             >
               {guestSignupSubmitting ? "Working…" : "Create account & continue"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {upgradeNudgeModalOpen ? (
+        <div
+          role="presentation"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 65,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            background: "rgba(44,36,22,0.35)",
+          }}
+          onClick={() => {
+            if (!upgradeNudgeSubmitting) {
+              pendingUpgradePurchasePackageRef.current = null;
+              setUpgradeNudgeModalOpen(false);
+              setUpgradeNudgeError(null);
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="upgrade-nudge-title"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 340,
+              background: "var(--white)",
+              borderRadius: 16,
+              padding: "22px 20px",
+              border: "1px solid var(--surface2)",
+              boxShadow: "0 12px 40px rgba(44,36,22,0.18)",
+            }}
+          >
+            <h3
+              id="upgrade-nudge-title"
+              style={{
+                fontFamily: "var(--font-cormorant)",
+                fontSize: 20,
+                fontWeight: 600,
+                color: "var(--ink)",
+                margin: "0 0 8px",
+              }}
+            >
+              Reminders
+            </h3>
+            <label
+              htmlFor="upgrade-nudge-consent"
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 10,
+                marginBottom: 14,
+                cursor: upgradeNudgeSubmitting ? "default" : "pointer",
+                userSelect: "none",
+              }}
+            >
+              <input
+                id="upgrade-nudge-consent"
+                type="checkbox"
+                checked={upgradeNudgeConsentChecked}
+                onChange={(e) => {
+                  setUpgradeNudgeConsentChecked(e.target.checked);
+                  setUpgradeNudgeError(null);
+                }}
+                disabled={upgradeNudgeSubmitting}
+                style={{
+                  marginTop: 2,
+                  width: 16,
+                  height: 16,
+                  flexShrink: 0,
+                  accentColor: "var(--ink)",
+                  cursor: upgradeNudgeSubmitting ? "not-allowed" : "pointer",
+                }}
+              />
+              <span style={{ fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.45 }}>
+                {MOMENT_COPY.notificationNudgeCheckboxLabel}
+              </span>
+            </label>
+            {upgradeNudgeError ? (
+              <p style={{ color: "#c00", fontSize: 13, margin: "0 0 12px", lineHeight: 1.45 }}>
+                {upgradeNudgeError}
+              </p>
+            ) : null}
+            <button
+              type="button"
+              disabled={upgradeNudgeSubmitting}
+              onClick={() => void finishUpgradeNudgeAndPurchase()}
+              className="goshed-primary-btn"
+              style={{
+                width: "100%",
+                justifyContent: "center",
+                padding: "12px 16px",
+                fontSize: 15,
+                fontWeight: 600,
+                cursor: upgradeNudgeSubmitting ? "wait" : "pointer",
+              }}
+            >
+              {upgradeNudgeSubmitting ? "Working…" : "Continue"}
             </button>
           </div>
         </div>
