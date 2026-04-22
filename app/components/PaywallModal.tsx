@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
 import { MOMENT_COPY } from "@/lib/momentCopy";
 import { useAuthSession } from "@/lib/auth-session-context";
+import { createSupabaseBrowserClient } from "@/lib/supabase";
 import { Purchases } from "@revenuecat/purchases-js";
 import type { Package, Offerings } from "@revenuecat/purchases-js";
 
@@ -41,7 +41,6 @@ export function PaywallModal({
   itemCount: _itemCount = 20,
   voluntary = false,
 }: PaywallModalProps) {
-  const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
   const [monthlyPackage, setMonthlyPackage] = useState<Package | null>(null);
   const [yearlyPackage, setYearlyPackage] = useState<Package | null>(null);
@@ -54,6 +53,13 @@ export function PaywallModal({
   const [promoLoading, setPromoLoading] = useState(false);
   const [promoError, setPromoError] = useState<string | null>(null);
   const [promoSuccess, setPromoSuccess] = useState<string | null>(null);
+  /** Guest tapped a price — collect email/password then purchase this plan. */
+  const [guestSignupOpen, setGuestSignupOpen] = useState(false);
+  const [guestPendingPlan, setGuestPendingPlan] = useState<"annual" | "monthly" | null>(null);
+  const [guestEmail, setGuestEmail] = useState("");
+  const [guestPassword, setGuestPassword] = useState("");
+  const [guestSignupSubmitting, setGuestSignupSubmitting] = useState(false);
+  const [guestSignupError, setGuestSignupError] = useState<string | null>(null);
   /** Last RevenueCat offerings summary or fetch outcome (for paywall disabled diagnostics). */
   const lastOfferingsSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const { refresh } = useAuthSession();
@@ -75,17 +81,6 @@ export function PaywallModal({
     }
   }, []);
 
-  const goToLogin = useCallback(() => {
-    if (typeof window !== "undefined") {
-      sessionStorage.setItem(
-        "redirect_after_login",
-        `${window.location.pathname}${window.location.search}${window.location.hash}`
-      );
-    }
-    onClose();
-    router.push("/login");
-  }, [onClose, router]);
-
   useEffect(() => {
     if (!open) {
       setUserId(null);
@@ -98,6 +93,12 @@ export function PaywallModal({
       setPromoCode("");
       setPromoError(null);
       setPromoSuccess(null);
+      setGuestSignupOpen(false);
+      setGuestPendingPlan(null);
+      setGuestEmail("");
+      setGuestPassword("");
+      setGuestSignupSubmitting(false);
+      setGuestSignupError(null);
       return;
     }
 
@@ -219,6 +220,115 @@ export function PaywallModal({
     [purchasing, onClose, onPurchaseSuccess]
   );
 
+  const completeGuestSignupAndPurchase = useCallback(async () => {
+    const email = guestEmail.trim().toLowerCase();
+    const password = guestPassword;
+    const plan = guestPendingPlan;
+    if (!email.includes("@")) {
+      setGuestSignupError("Enter a valid email.");
+      return;
+    }
+    if (password.trim().length < 6) {
+      setGuestSignupError("Use at least 6 characters for your password.");
+      return;
+    }
+    if (!plan) return;
+
+    setGuestSignupError(null);
+    setGuestSignupSubmitting(true);
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const res = await fetch("/api/auth/upgrade-signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password: password.trim() }),
+      });
+      const signupBody = (await res.json().catch(() => ({}))) as {
+        error?: unknown;
+        code?: unknown;
+      };
+
+      const created = res.ok;
+      const already =
+        res.status === 409 && signupBody.code === "already_registered";
+      if (!created && !already) {
+        setGuestSignupError(
+          typeof signupBody.error === "string" ? signupBody.error : "Could not create account."
+        );
+        return;
+      }
+
+      const { error: inErr } = await supabase.auth.signInWithPassword({
+        email,
+        password: password.trim(),
+      });
+      if (inErr) {
+        setGuestSignupError(inErr.message || "Could not sign in. Check your password.");
+        return;
+      }
+
+      const snap = await refresh();
+      const uid = snap.user?.id ?? null;
+      if (!uid) {
+        setGuestSignupError("Could not start your session. Try again or use the login page.");
+        return;
+      }
+
+      void fetch("/api/auth/password-set", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      }).catch(() => {});
+
+      if (!API_KEY.trim()) {
+        setGuestSignupError("Subscriptions are not available in this build.");
+        return;
+      }
+
+      const configured = await ensureConfigured(uid);
+      if (!configured) {
+        setGuestSignupError("Could not connect billing. Try again.");
+        return;
+      }
+
+      const purchases = Purchases.getSharedInstance();
+      let offerings: Offerings;
+      try {
+        offerings = await purchases.getOfferings();
+      } catch {
+        setGuestSignupError("Could not load plans. Try again.");
+        return;
+      }
+
+      const pkg =
+        plan === "annual" ? (offerings.current?.annual ?? null) : (offerings.current?.monthly ?? null);
+      if (!pkg) {
+        setGuestSignupError("That plan is not available right now. Try again.");
+        return;
+      }
+
+      setUserId(uid);
+      setMonthlyPackage(offerings.current?.monthly ?? null);
+      setYearlyPackage(offerings.current?.annual ?? null);
+      setGuestSignupOpen(false);
+      setGuestEmail("");
+      setGuestPassword("");
+      setGuestPendingPlan(null);
+
+      await handlePurchase(pkg);
+    } finally {
+      setGuestSignupSubmitting(false);
+    }
+  }, [
+    guestEmail,
+    guestPassword,
+    guestPendingPlan,
+    refresh,
+    ensureConfigured,
+    handlePurchase,
+  ]);
+
   const handleApplyPromo = useCallback(async () => {
     const code = promoCode.trim();
     if (!code || promoLoading) return;
@@ -274,7 +384,9 @@ export function PaywallModal({
 
   const onYearClick = () => {
     if (!signedIn) {
-      goToLogin();
+      setGuestPendingPlan("annual");
+      setGuestSignupOpen(true);
+      setGuestSignupError(null);
       return;
     }
     void handlePurchase(yearlyPackage);
@@ -282,7 +394,9 @@ export function PaywallModal({
 
   const onMonthClick = () => {
     if (!signedIn) {
-      goToLogin();
+      setGuestPendingPlan("monthly");
+      setGuestSignupOpen(true);
+      setGuestSignupError(null);
       return;
     }
     void handlePurchase(monthlyPackage);
@@ -477,6 +591,124 @@ export function PaywallModal({
           </div>
         ) : null}
       </div>
+
+      {guestSignupOpen ? (
+        <div
+          role="presentation"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 60,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            background: "rgba(44,36,22,0.35)",
+          }}
+          onClick={() => {
+            if (!guestSignupSubmitting) {
+              setGuestSignupOpen(false);
+              setGuestPendingPlan(null);
+              setGuestSignupError(null);
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="guest-paywall-signup-title"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 340,
+              background: "var(--white)",
+              borderRadius: 16,
+              padding: "22px 20px",
+              border: "1px solid var(--surface2)",
+              boxShadow: "0 12px 40px rgba(44,36,22,0.18)",
+            }}
+          >
+            <h3
+              id="guest-paywall-signup-title"
+              style={{
+                fontFamily: "var(--font-cormorant)",
+                fontSize: 20,
+                fontWeight: 600,
+                color: "var(--ink)",
+                margin: "0 0 6px",
+              }}
+            >
+              Create account to continue
+            </h3>
+            <p style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.45, margin: "0 0 14px" }}>
+              {guestPendingPlan === "annual" ? "Annual plan" : "Monthly plan"} — no email link; use a password you&apos;ll remember.
+            </p>
+            {guestSignupError ? (
+              <p style={{ color: "#c00", fontSize: 13, margin: "0 0 10px" }}>{guestSignupError}</p>
+            ) : null}
+            <input
+              type="email"
+              value={guestEmail}
+              onChange={(e) => {
+                setGuestEmail(e.target.value);
+                setGuestSignupError(null);
+              }}
+              placeholder="Email"
+              autoComplete="email"
+              disabled={guestSignupSubmitting}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                fontSize: 15,
+                border: "1px solid var(--surface2)",
+                borderRadius: 10,
+                marginBottom: 8,
+                boxSizing: "border-box",
+              }}
+            />
+            <input
+              type="password"
+              value={guestPassword}
+              onChange={(e) => {
+                setGuestPassword(e.target.value);
+                setGuestSignupError(null);
+              }}
+              placeholder="Password (min 6 characters)"
+              autoComplete="new-password"
+              disabled={guestSignupSubmitting}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                fontSize: 15,
+                border: "1px solid var(--surface2)",
+                borderRadius: 10,
+                marginBottom: 14,
+                boxSizing: "border-box",
+              }}
+            />
+            <button
+              type="button"
+              disabled={
+                guestSignupSubmitting ||
+                !guestEmail.trim().includes("@") ||
+                guestPassword.trim().length < 6
+              }
+              onClick={() => void completeGuestSignupAndPurchase()}
+              className="goshed-primary-btn"
+              style={{
+                width: "100%",
+                justifyContent: "center",
+                padding: "12px 16px",
+                fontSize: 15,
+                fontWeight: 600,
+                cursor: guestSignupSubmitting ? "wait" : "pointer",
+              }}
+            >
+              {guestSignupSubmitting ? "Working…" : "Create account & continue"}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
