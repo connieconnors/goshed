@@ -52,5 +52,41 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error.message || "Could not create account" }, { status: 400 });
   }
 
-  return NextResponse.json({ ok: true as const, userId: data.user?.id ?? null });
+  const uid = data.user?.id ?? null;
+  const userEmail = (data.user?.email ?? email).trim().toLowerCase();
+  if (!uid || !userEmail.includes("@")) {
+    return NextResponse.json({ error: "Account created but user id missing" }, { status: 500 });
+  }
+
+  /** Same profile flags as POST /api/auth/password-set (no session on this request, so apply via admin). */
+  const rowUpdate = {
+    has_password_set: true,
+    skipped_password_at: null as string | null,
+    welcome_sent: true,
+  };
+
+  const { error: usersErr } = await admin.from("users").upsert(
+    {
+      id: uid,
+      email: userEmail,
+      ...rowUpdate,
+    },
+    { onConflict: "id" }
+  );
+
+  if (usersErr) {
+    console.error("[upgrade-signup] users upsert (password-set equivalent):", usersErr.message);
+    return NextResponse.json({ error: "Account created but profile could not be saved." }, { status: 500 });
+  }
+
+  const { error: upsertHintErr } = await admin
+    .from("user_password_set")
+    .upsert({ email: userEmail, set_at: new Date().toISOString() }, { onConflict: "email" });
+
+  if (upsertHintErr) {
+    console.error("[upgrade-signup] user_password_set upsert:", upsertHintErr.message);
+    return NextResponse.json({ error: "Account created but profile could not be saved." }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true as const, userId: uid });
 }
