@@ -58,6 +58,7 @@ export function PaywallModal({
   const [guestPendingPlan, setGuestPendingPlan] = useState<"annual" | "monthly" | null>(null);
   const [guestEmail, setGuestEmail] = useState("");
   const [guestPassword, setGuestPassword] = useState("");
+  const [guestConfirmPassword, setGuestConfirmPassword] = useState("");
   const [guestSignupSubmitting, setGuestSignupSubmitting] = useState(false);
   const [guestSignupError, setGuestSignupError] = useState<string | null>(null);
   /** Last RevenueCat offerings summary or fetch outcome (for paywall disabled diagnostics). */
@@ -97,6 +98,7 @@ export function PaywallModal({
       setGuestPendingPlan(null);
       setGuestEmail("");
       setGuestPassword("");
+      setGuestConfirmPassword("");
       setGuestSignupSubmitting(false);
       setGuestSignupError(null);
       return;
@@ -232,6 +234,10 @@ export function PaywallModal({
       setGuestSignupError("Use at least 6 characters for your password.");
       return;
     }
+    if (password.trim() !== guestConfirmPassword.trim()) {
+      setGuestSignupError("Passwords don’t match.");
+      return;
+    }
     if (!plan) return;
 
     setGuestSignupError(null);
@@ -314,6 +320,7 @@ export function PaywallModal({
       setGuestSignupOpen(false);
       setGuestEmail("");
       setGuestPassword("");
+      setGuestConfirmPassword("");
       setGuestPendingPlan(null);
 
       await handlePurchase(pkg);
@@ -323,6 +330,7 @@ export function PaywallModal({
   }, [
     guestEmail,
     guestPassword,
+    guestConfirmPassword,
     guestPendingPlan,
     refresh,
     ensureConfigured,
@@ -387,6 +395,7 @@ export function PaywallModal({
       setGuestPendingPlan("annual");
       setGuestSignupOpen(true);
       setGuestSignupError(null);
+      setGuestConfirmPassword("");
       return;
     }
     void handlePurchase(yearlyPackage);
@@ -397,6 +406,7 @@ export function PaywallModal({
       setGuestPendingPlan("monthly");
       setGuestSignupOpen(true);
       setGuestSignupError(null);
+      setGuestConfirmPassword("");
       return;
     }
     void handlePurchase(monthlyPackage);
@@ -610,6 +620,8 @@ export function PaywallModal({
               setGuestSignupOpen(false);
               setGuestPendingPlan(null);
               setGuestSignupError(null);
+              setGuestPassword("");
+              setGuestConfirmPassword("");
             }
           }}
         >
@@ -643,9 +655,6 @@ export function PaywallModal({
             <p style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.45, margin: "0 0 14px" }}>
               {guestPendingPlan === "annual" ? "Annual plan" : "Monthly plan"} — no email link; use a password you&apos;ll remember.
             </p>
-            {guestSignupError ? (
-              <p style={{ color: "#c00", fontSize: 13, margin: "0 0 10px" }}>{guestSignupError}</p>
-            ) : null}
             <input
               type="email"
               value={guestEmail}
@@ -682,16 +691,95 @@ export function PaywallModal({
                 fontSize: 15,
                 border: "1px solid var(--surface2)",
                 borderRadius: 10,
+                marginBottom: 8,
+                boxSizing: "border-box",
+              }}
+            />
+            <input
+              type="password"
+              value={guestConfirmPassword}
+              onChange={(e) => {
+                setGuestConfirmPassword(e.target.value);
+                setGuestSignupError(null);
+              }}
+              placeholder="Confirm password"
+              autoComplete="new-password"
+              disabled={guestSignupSubmitting}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                fontSize: 15,
+                border: "1px solid var(--surface2)",
+                borderRadius: 10,
                 marginBottom: 14,
                 boxSizing: "border-box",
               }}
             />
+            {guestSignupError ? (
+              <div style={{ marginBottom: 14 }}>
+                <p style={{ color: "#c00", fontSize: 13, margin: "0 0 10px", lineHeight: 1.45 }}>
+                  {guestSignupError}
+                </p>
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 12,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <button
+                    type="button"
+                    disabled={guestSignupSubmitting}
+                    onClick={() => setGuestSignupError(null)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      fontSize: 13,
+                      color: "var(--accent)",
+                      cursor: guestSignupSubmitting ? "not-allowed" : "pointer",
+                      textDecoration: "underline",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    Edit details
+                  </button>
+                  <button
+                    type="button"
+                    disabled={guestSignupSubmitting}
+                    onClick={() => {
+                      setGuestSignupOpen(false);
+                      setGuestPendingPlan(null);
+                      setGuestSignupError(null);
+                      setGuestPassword("");
+                      setGuestConfirmPassword("");
+                    }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      fontSize: 13,
+                      color: "var(--ink-soft)",
+                      cursor: guestSignupSubmitting ? "not-allowed" : "pointer",
+                      textDecoration: "underline",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    Back
+                  </button>
+                </div>
+              </div>
+            ) : null}
             <button
               type="button"
               disabled={
                 guestSignupSubmitting ||
                 !guestEmail.trim().includes("@") ||
-                guestPassword.trim().length < 6
+                guestPassword.trim().length < 6 ||
+                guestConfirmPassword.trim().length < 6 ||
+                guestPassword.trim() !== guestConfirmPassword.trim()
               }
               onClick={() => void completeGuestSignupAndPurchase()}
               className="goshed-primary-btn"
