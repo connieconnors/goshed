@@ -109,9 +109,12 @@ export function PasswordOnboardingGate({ children }: { children: React.ReactNode
     setSubmitting(true);
     try {
       const supabase = createSupabaseBrowserClient();
-      const { error: upErr } = await supabase.auth.updateUser({ password: p });
-      if (upErr) {
-        setError(upErr.message);
+      const { data: updateData, error: updateError } = await supabase.auth.updateUser({ password: p });
+      console.log("[PasswordOnboarding] updateUser result", { error: updateError });
+      console.log("[PasswordOnboarding] updateUser full response", { data: updateData, error: updateError });
+      if (updateError) {
+        console.error("[PasswordOnboarding] updateUser failed", updateError);
+        setError(updateError.message);
         return;
       }
       const pr = await fetch("/api/auth/password-set", {
@@ -120,8 +123,10 @@ export function PasswordOnboardingGate({ children }: { children: React.ReactNode
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notificationConsent }),
       });
+      console.log("[PasswordOnboarding] password-set response", { ok: pr.ok, status: pr.status });
       if (!pr.ok) {
         const pb = await pr.json().catch(() => ({}));
+        console.error("[PasswordOnboarding] password-set failed", { status: pr.status, body: pb });
         setError(typeof pb?.error === "string" ? pb.error : "Could not save password to your profile.");
         return;
       }
@@ -136,6 +141,9 @@ export function PasswordOnboardingGate({ children }: { children: React.ReactNode
         snap = await refresh();
       }
       console.log("[PasswordOnboarding] refresh() after set password", { welcomeSent: snap.welcomeSent, user: snap.user });
+      if (!snap.user) {
+        console.error("[PasswordOnboarding] session still missing before navigation", { snap });
+      }
       router.replace("/");
       router.refresh();
     } finally {
