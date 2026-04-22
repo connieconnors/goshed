@@ -69,7 +69,8 @@ export function PaywallModal({
   const [upgradeNudgeConsentChecked, setUpgradeNudgeConsentChecked] = useState(true);
   const [upgradeNudgeSubmitting, setUpgradeNudgeSubmitting] = useState(false);
   const [upgradeNudgeError, setUpgradeNudgeError] = useState<string | null>(null);
-  const pendingUpgradePurchasePackageRef = useRef<Package | null>(null);
+  const pendingUpgradePlanRef = useRef<"annual" | "monthly" | null>(null);
+  const pendingUpgradeUserIdRef = useRef<string | null>(null);
   /** Last RevenueCat offerings summary or fetch outcome (for paywall disabled diagnostics). */
   const lastOfferingsSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const { refresh } = useAuthSession();
@@ -114,7 +115,8 @@ export function PaywallModal({
       setUpgradeNudgeConsentChecked(true);
       setUpgradeNudgeSubmitting(false);
       setUpgradeNudgeError(null);
-      pendingUpgradePurchasePackageRef.current = null;
+      pendingUpgradePlanRef.current = null;
+      pendingUpgradeUserIdRef.current = null;
       return;
     }
 
@@ -302,43 +304,15 @@ export function PaywallModal({
         return;
       }
 
-      if (!API_KEY.trim()) {
-        setGuestSignupError("Subscriptions are not available in this build.");
-        return;
-      }
-
-      const configured = await ensureConfigured(uid);
-      if (!configured) {
-        setGuestSignupError("Could not connect billing. Try again.");
-        return;
-      }
-
-      const purchases = Purchases.getSharedInstance();
-      let offerings: Offerings;
-      try {
-        offerings = await purchases.getOfferings();
-      } catch {
-        setGuestSignupError("Could not load plans. Try again.");
-        return;
-      }
-
-      const pkg =
-        plan === "annual" ? (offerings.current?.annual ?? null) : (offerings.current?.monthly ?? null);
-      if (!pkg) {
-        setGuestSignupError("That plan is not available right now. Try again.");
-        return;
-      }
-
       setUserId(uid);
-      setMonthlyPackage(offerings.current?.monthly ?? null);
-      setYearlyPackage(offerings.current?.annual ?? null);
+      pendingUpgradeUserIdRef.current = uid;
+      pendingUpgradePlanRef.current = plan;
       setGuestSignupOpen(false);
       setGuestEmail("");
       setGuestPassword("");
       setGuestConfirmPassword("");
       setGuestPendingPlan(null);
 
-      pendingUpgradePurchasePackageRef.current = pkg;
       setUpgradeNudgeConsentChecked(true);
       setUpgradeNudgeError(null);
       setUpgradeNudgeModalOpen(true);
@@ -351,15 +325,15 @@ export function PaywallModal({
     guestConfirmPassword,
     guestPendingPlan,
     refresh,
-    ensureConfigured,
-    handlePurchase,
-    beforeGuestPurchase,
   ]);
 
   const finishUpgradeNudgeAndPurchase = useCallback(async () => {
-    const pkg = pendingUpgradePurchasePackageRef.current;
-    if (!pkg) {
+    const plan = pendingUpgradePlanRef.current;
+    const uid = pendingUpgradeUserIdRef.current;
+    if (!plan || !uid) {
       setUpgradeNudgeModalOpen(false);
+      pendingUpgradePlanRef.current = null;
+      pendingUpgradeUserIdRef.current = null;
       return;
     }
     setUpgradeNudgeSubmitting(true);
@@ -378,14 +352,46 @@ export function PaywallModal({
         );
         return;
       }
-      pendingUpgradePurchasePackageRef.current = null;
-      setUpgradeNudgeModalOpen(false);
+
       await beforeGuestPurchase?.();
+
+      if (!API_KEY.trim()) {
+        setUpgradeNudgeError("Subscriptions are not available in this build.");
+        return;
+      }
+
+      const configured = await ensureConfigured(uid);
+      if (!configured) {
+        setUpgradeNudgeError("Could not connect billing. Try again.");
+        return;
+      }
+
+      const purchases = Purchases.getSharedInstance();
+      let offerings: Offerings;
+      try {
+        offerings = await purchases.getOfferings();
+      } catch {
+        setUpgradeNudgeError("Could not load plans. Try again.");
+        return;
+      }
+
+      const pkg =
+        plan === "annual" ? (offerings.current?.annual ?? null) : (offerings.current?.monthly ?? null);
+      if (!pkg) {
+        setUpgradeNudgeError("That plan is not available right now. Try again.");
+        return;
+      }
+
+      pendingUpgradePlanRef.current = null;
+      pendingUpgradeUserIdRef.current = null;
+      setMonthlyPackage(offerings.current?.monthly ?? null);
+      setYearlyPackage(offerings.current?.annual ?? null);
+      setUpgradeNudgeModalOpen(false);
       await handlePurchase(pkg);
     } finally {
       setUpgradeNudgeSubmitting(false);
     }
-  }, [upgradeNudgeConsentChecked, beforeGuestPurchase, handlePurchase]);
+  }, [upgradeNudgeConsentChecked, beforeGuestPurchase, ensureConfigured, handlePurchase]);
 
   const handleApplyPromo = useCallback(async () => {
     const code = promoCode.trim();
@@ -863,7 +869,8 @@ export function PaywallModal({
           }}
           onClick={() => {
             if (!upgradeNudgeSubmitting) {
-              pendingUpgradePurchasePackageRef.current = null;
+              pendingUpgradePlanRef.current = null;
+              pendingUpgradeUserIdRef.current = null;
               setUpgradeNudgeModalOpen(false);
               setUpgradeNudgeError(null);
             }
