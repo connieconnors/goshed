@@ -4,6 +4,7 @@ import { useRef, useState, useEffect, useCallback, type CSSProperties } from 're
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuthSession } from '@/lib/auth-session-context';
+import { createSupabaseBrowserClient } from '@/lib/supabase';
 import { getRandomActionPrompt, type ActionPromptType } from '@/lib/actionPrompts';
 import { PaywallModal } from '@/app/components/PaywallModal';
 import { SentimentalNudge } from '@/components/SentimentalNudge';
@@ -412,8 +413,19 @@ function HomeContent() {
 
   const handleZoneClick = () => inputRef.current?.click();
 
-  const handleAiConsentAccept = () => {
+  const handleAiConsentAccept = async () => {
     localStorage.setItem("goshed_ai_consent", "1");
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from("users").update({ ai_consent_shown: true }).eq("id", user.id);
+      }
+    } catch {
+      /* missing env or update failed — localStorage still records consent for this device */
+    }
     setShowAiConsent(false);
     const resolve = aiConsentGuestPurchaseResolverRef.current;
     aiConsentGuestPurchaseResolverRef.current = null;
@@ -424,6 +436,25 @@ function HomeContent() {
   const waitForAiConsentBeforeGuestPurchase = useCallback(async () => {
     if (typeof window !== "undefined" && localStorage.getItem("goshed_ai_consent")) {
       return;
+    }
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        const { data, error } = await supabase
+          .from("users")
+          .select("ai_consent_shown")
+          .eq("id", user.id)
+          .maybeSingle();
+        if (!error && data?.ai_consent_shown === true) {
+          if (typeof window !== "undefined") localStorage.setItem("goshed_ai_consent", "1");
+          return;
+        }
+      }
+    } catch {
+      /* fall through to modal */
     }
     await new Promise<void>((resolve) => {
       aiConsentGuestPurchaseResolverRef.current = resolve;
@@ -1640,7 +1671,7 @@ function HomeContent() {
             </p>
             <button
               type="button"
-              onClick={handleAiConsentAccept}
+              onClick={() => void handleAiConsentAccept()}
               style={{ width: "100%", padding: "14px", fontSize: "15px", fontWeight: 600, borderRadius: "10px", border: "none", background: "var(--ink)", color: "var(--white)", cursor: "pointer" }}
             >
               Got it
