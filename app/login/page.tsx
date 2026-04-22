@@ -4,7 +4,6 @@ import { useState, useEffect, Suspense, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
-import { getEmailsWithPassword } from "@/lib/authPasswordHint";
 import { useAuthSession } from "@/lib/auth-session-context";
 
 const LAST_LOGIN_EMAIL_KEY = "goshed_last_login_email";
@@ -15,36 +14,16 @@ function LoginForm() {
   const { user: sessionUser, loading: authSessionLoading } = useAuthSession();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [sent, setSent] = useState(false);
-  const [authError, setAuthError] = useState(false);
-  const [sendError, setSendError] = useState<string | null>(null);
-  const [invalidPasswordRecovery, setInvalidPasswordRecovery] = useState(false);
-  const [sending, setSending] = useState(false);
+  const [signInError, setSignInError] = useState<string | null>(null);
+  const [resetSuccess, setResetSuccess] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [signingIn, setSigningIn] = useState(false);
+  const [resetSending, setResetSending] = useState(false);
   const [mounted, setMounted] = useState(false);
   /** After timeout, show the sign-in form even if session fetch is still pending (avoid stuck UI). */
   const [sessionWaitTimedOut, setSessionWaitTimedOut] = useState(false);
 
   const emailNorm = email.trim().toLowerCase();
-  const [remoteHasPassword, setRemoteHasPassword] = useState(false);
-
-  useEffect(() => {
-    if (!mounted || !emailNorm.includes("@")) {
-      setRemoteHasPassword(false);
-      return;
-    }
-    const t = setTimeout(() => {
-      fetch(`/api/auth/has-password?email=${encodeURIComponent(emailNorm)}`, { cache: "no-store" })
-        .then((r) => r.json())
-        .then((d: { hasPassword?: unknown }) => setRemoteHasPassword(d.hasPassword === true))
-        .catch(() => setRemoteHasPassword(false));
-    }, 300);
-    return () => clearTimeout(t);
-  }, [mounted, emailNorm]);
-
-  const showPasswordSignIn =
-    mounted &&
-    emailNorm.length > 0 &&
-    (getEmailsWithPassword().includes(emailNorm) || remoteHasPassword);
 
   useEffect(() => {
     setMounted(true);
@@ -70,12 +49,6 @@ function LoginForm() {
     router.refresh();
   }, [router]);
 
-  /**
-   * Signed-in users should not stay on /login. AuthSessionProvider uses GET /api/auth/session
-   * (server cookies), so this catches magic-link new users who tap Sign in before the client
-   * hydrates — unlike supabase.auth.getSession() alone, which can briefly miss the new session.
-   * PasswordOnboardingGate on `/` handles `has_password_set === false` && `skipped_password_at == null`.
-   */
   useEffect(() => {
     if (!mounted || authSessionLoading || !sessionUser) return;
     redirectAfterLogin();
@@ -87,107 +60,83 @@ function LoginForm() {
     if (last && last.includes("@")) setEmail(last);
   }, [mounted]);
 
-  useEffect(() => {
-    if (!mounted) return;
-    if (typeof window !== "undefined" && searchParams.get("error") === "auth") setAuthError(true);
-  }, [mounted, searchParams]);
-
-  const sendMagicLink = async () => {
-    if (typeof window === "undefined" || !emailNorm.includes("@")) return;
-    setSendError(null);
-    setInvalidPasswordRecovery(false);
-    setSending(true);
-    const redirect = searchParams.get("redirect");
-    if (redirect) sessionStorage.setItem("redirect_after_login", redirect);
-    const supabase = createSupabaseBrowserClient();
-    const { error } = await supabase.auth.signInWithOtp({
-      email: emailNorm,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
-    });
-    setSending(false);
-    if (!error) {
-      localStorage.setItem(LAST_LOGIN_EMAIL_KEY, emailNorm);
-      setSent(true);
-      return;
-    }
-    const isRateLimit =
-      error.message?.toLowerCase().includes("rate limit") ||
-      (error as { status?: number }).status === 429;
-    setSendError(
-      isRateLimit
-        ? "Too many sign-in attempts. Please wait about an hour, then try again."
-        : error.message || "Could not send link. Try again."
-    );
-  };
-
-  const handleSendMeALink = async () => {
-    await sendMagicLink();
-  };
-
-  const handleSignInWithPassword = async () => {
+  const handleSignIn = async () => {
     if (typeof window === "undefined" || !emailNorm.includes("@") || !password.trim()) return;
-    setSendError(null);
-    setInvalidPasswordRecovery(false);
-    setSending(true);
+    setSignInError(null);
+    setResetSuccess(false);
+    setResetError(null);
     const redirect = searchParams.get("redirect");
     if (redirect) sessionStorage.setItem("redirect_after_login", redirect);
-    const supabase = createSupabaseBrowserClient();
-    const { error } = await supabase.auth.signInWithPassword({ email: emailNorm, password });
-    setSending(false);
-    if (error) {
-      const isInvalidCreds =
-        error.message?.toLowerCase().includes("invalid login credentials") ||
-        error.message?.toLowerCase().includes("invalid credentials");
-      if (isInvalidCreds) {
-        setInvalidPasswordRecovery(true);
-        setSendError(null);
-      } else {
-        setSendError(error.message || "Invalid email or password.");
+    setSigningIn(true);
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const { error } = await supabase.auth.signInWithPassword({ email: emailNorm, password });
+      if (error) {
+        setSignInError(
+          "Can't find that combination. If you signed in with a link before, use Forgot password to set a password."
+        );
+        return;
       }
-      return;
+      localStorage.setItem(LAST_LOGIN_EMAIL_KEY, emailNorm);
+      redirectAfterLogin();
+    } finally {
+      setSigningIn(false);
     }
-    setInvalidPasswordRecovery(false);
-    localStorage.setItem(LAST_LOGIN_EMAIL_KEY, emailNorm);
-    redirectAfterLogin();
   };
 
-  const handleSendLinkInstead = async () => {
-    setPassword("");
-    setInvalidPasswordRecovery(false);
-    await sendMagicLink();
+  const handleForgotPassword = async () => {
+    if (typeof window === "undefined" || !emailNorm.includes("@")) {
+      setResetError("Enter your email address first.");
+      return;
+    }
+    setResetError(null);
+    setSignInError(null);
+    setResetSuccess(false);
+    setResetSending(true);
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const { error } = await supabase.auth.resetPasswordForEmail(emailNorm, {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      });
+      if (error) {
+        setResetError(error.message || "Could not send reset email. Try again.");
+        return;
+      }
+      setResetSuccess(true);
+    } finally {
+      setResetSending(false);
+    }
   };
 
   const waitingOnAuthSession = mounted && authSessionLoading && !sessionWaitTimedOut;
   if (!mounted || waitingOnAuthSession) {
     return (
-      <div style={{ padding: 40, textAlign: "center", fontFamily: "sans-serif" }}>
-        <p style={{ color: "#666", fontSize: 16 }}>Checking session…</p>
+      <div style={{ padding: 40, textAlign: "center", fontFamily: "inherit", color: "var(--ink-soft)" }}>
+        <p style={{ fontSize: 16 }}>Checking session…</p>
       </div>
     );
   }
 
   if (sessionUser) {
     return (
-      <div style={{ padding: 40, textAlign: "center", fontFamily: "sans-serif" }}>
-        <p style={{ color: "#666", fontSize: 16 }}>Signed in — taking you to GoShed…</p>
+      <div style={{ padding: 40, textAlign: "center", fontFamily: "inherit", color: "var(--ink-soft)" }}>
+        <p style={{ fontSize: 16 }}>Signed in — taking you to GoShed…</p>
       </div>
     );
   }
 
-  if (sent) {
-    return (
-      <div style={{ padding: 40, textAlign: "center", fontFamily: "sans-serif" }}>
-        <h2>Check your email ✉️</h2>
-        <p>Check your email — we sent you a link to sign in.</p>
-        <p style={{ color: "#888", fontSize: 14 }}>
-          We sent it to <strong>{email}</strong>. Tap the link to sign in.
-        </p>
-        <p style={{ color: "#888", fontSize: 13, marginTop: 12 }}>
-          Can&apos;t find it? Check spam, or wait a minute and try again.
-        </p>
-      </div>
-    );
-  }
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    padding: 12,
+    fontSize: 16,
+    borderRadius: 12,
+    border: "1px solid var(--surface2)",
+    marginBottom: 12,
+    boxSizing: "border-box",
+    fontFamily: "inherit",
+    background: "var(--white)",
+    color: "var(--ink)",
+  };
 
   return (
     <div
@@ -195,168 +144,121 @@ function LoginForm() {
         padding: 40,
         maxWidth: 400,
         margin: "0 auto",
-        fontFamily: "sans-serif",
+        fontFamily: "inherit",
+        color: "var(--ink)",
       }}
     >
-      <h2>Sign in to GoShed</h2>
-      {authError && (
-        <p style={{ color: "#c00", fontSize: 14, marginBottom: 12 }}>
-          That link expired. Want a new one?
+      <h2
+        style={{
+          fontFamily: "var(--font-display)",
+          fontSize: 26,
+          fontWeight: 600,
+          margin: "0 0 8px",
+          color: "var(--ink)",
+        }}
+      >
+        Sign in to GoShed
+      </h2>
+      <p style={{ fontSize: 14, color: "var(--ink-soft)", margin: "0 0 20px", lineHeight: 1.5 }}>
+        Use the email and password you created.
+      </p>
+
+      {signInError ? (
+        <p style={{ color: "#b42318", fontSize: 14, marginBottom: 12, lineHeight: 1.45 }}>{signInError}</p>
+      ) : null}
+
+      {resetError ? (
+        <p style={{ color: "#b42318", fontSize: 14, marginBottom: 12, lineHeight: 1.45 }}>{resetError}</p>
+      ) : null}
+
+      {resetSuccess ? (
+        <p style={{ color: "var(--green)", fontSize: 14, marginBottom: 12, lineHeight: 1.45, fontWeight: 500 }}>
+          Check your email for a password reset link.
         </p>
-      )}
-      {invalidPasswordRecovery && (
-        <div
-          style={{
-            marginBottom: 12,
-            padding: 12,
-            background: "#fff8f0",
-            borderRadius: 8,
-            border: "1px solid #e8d5c4",
-          }}
-        >
-          <p style={{ color: "#8a5a2d", fontSize: 14, margin: 0 }}>
-            Wrong password — or forgot it? We&apos;ll email you a sign-in link.
-          </p>
-          <button
-            type="button"
-            onClick={handleSendLinkInstead}
-            disabled={sending}
-            style={{
-              marginTop: 8,
-              background: "none",
-              border: "none",
-              padding: 0,
-              color: "#3d2e20",
-              textDecoration: "underline",
-              cursor: sending ? "wait" : "pointer",
-              fontSize: 14,
-              fontFamily: "inherit",
-            }}
-          >
-            {sending ? "Sending…" : "Send me a link instead"}
-          </button>
-        </div>
-      )}
-      {sendError && (
-        <p style={{ color: "#c00", fontSize: 14, marginBottom: 12 }}>
-          {sendError}
-        </p>
-      )}
+      ) : null}
 
       <input
         type="email"
         value={email}
         onChange={(e) => {
           setEmail(e.target.value);
-          setInvalidPasswordRecovery(false);
+          setSignInError(null);
+          setResetError(null);
+          setResetSuccess(false);
         }}
-        placeholder="your@email.com"
+        placeholder="Email"
         autoComplete="email"
-        style={{
-          width: "100%",
-          padding: 12,
-          fontSize: 16,
-          borderRadius: 8,
-          border: "1px solid #ddd",
-          marginBottom: 12,
-          boxSizing: "border-box",
-        }}
+        style={inputStyle}
       />
 
-      {showPasswordSignIn ? (
-        <>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => {
-              setPassword(e.target.value);
-              setInvalidPasswordRecovery(false);
-            }}
-            placeholder="Password"
-            autoComplete="current-password"
-            style={{
-              width: "100%",
-              padding: 12,
-              fontSize: 16,
-              borderRadius: 8,
-              border: "1px solid #ddd",
-              marginBottom: 12,
-              boxSizing: "border-box",
-            }}
-          />
-          <button
-            type="button"
-            onClick={handleSignInWithPassword}
-            disabled={sending || !emailNorm.includes("@") || !password.trim()}
-            style={{
-              width: "100%",
-              padding: 12,
-              background: sending ? "#8a7a6a" : "#3d2e20",
-              color: "white",
-              border: "none",
-              borderRadius: 8,
-              fontSize: 16,
-              cursor: sending ? "wait" : "pointer",
-              marginBottom: 10,
-            }}
-          >
-            {sending ? "Signing in…" : "Sign in"}
-          </button>
-          <button
-            type="button"
-            onClick={handleSendLinkInstead}
-            disabled={sending}
-            style={{
-              width: "100%",
-              padding: 10,
-              background: "transparent",
-              color: "#3d2e20",
-              border: "none",
-              borderRadius: 8,
-              fontSize: 14,
-              textDecoration: "underline",
-              cursor: sending ? "wait" : "pointer",
-            }}
-          >
-            {sending ? "Sending…" : "Send me a link instead"}
-          </button>
-        </>
-      ) : (
-        <>
-          <button
-            type="button"
-            onClick={handleSendMeALink}
-            disabled={sending || !emailNorm.includes("@")}
-            style={{
-              width: "100%",
-              padding: 12,
-              background: sending ? "#8a7a6a" : "#3d2e20",
-              color: "white",
-              border: "none",
-              borderRadius: 8,
-              fontSize: 16,
-              cursor: sending ? "wait" : "pointer",
-            }}
-          >
-            {sending ? "Sending…" : "Send me a link"}
-          </button>
-          <p style={{ margin: "14px 0 0", textAlign: "center", fontSize: 14, color: "#666", lineHeight: 1.45 }}>
-            <Link
-              href="/set-password"
-              style={{ color: "#3d2e20", fontWeight: 500, textDecoration: "underline" }}
-            >
-              Create a password instead
-            </Link>
-          </p>
-        </>
-      )}
+      <input
+        type="password"
+        value={password}
+        onChange={(e) => {
+          setPassword(e.target.value);
+          setSignInError(null);
+        }}
+        placeholder="Password"
+        autoComplete="current-password"
+        style={inputStyle}
+      />
+
+      <button
+        type="button"
+        onClick={() => void handleSignIn()}
+        disabled={signingIn || !emailNorm.includes("@") || !password.trim()}
+        className="goshed-primary-btn"
+        style={{
+          width: "100%",
+          justifyContent: "center",
+          marginBottom: 14,
+          cursor: signingIn ? "wait" : "pointer",
+          opacity: signingIn || !emailNorm.includes("@") || !password.trim() ? 0.65 : 1,
+        }}
+      >
+        {signingIn ? "Signing in…" : "Sign in"}
+      </button>
+
+      <div style={{ textAlign: "center" }}>
+        <button
+          type="button"
+          onClick={() => void handleForgotPassword()}
+          disabled={resetSending}
+          style={{
+            background: "none",
+            border: "none",
+            padding: 0,
+            color: "var(--ink-soft)",
+            textDecoration: "underline",
+            cursor: resetSending ? "wait" : "pointer",
+            fontSize: 14,
+            fontFamily: "inherit",
+          }}
+        >
+          {resetSending ? "Sending…" : "Forgot password?"}
+        </button>
+      </div>
+
+      <p style={{ marginTop: 28, marginBottom: 0, textAlign: "center", lineHeight: 1.5 }}>
+        <Link
+          href="/"
+          style={{
+            fontSize: 12,
+            color: "var(--ink-soft)",
+            textDecoration: "none",
+            cursor: "pointer",
+          }}
+        >
+          New to GoShed? Just start using it — no account needed.
+        </Link>
+      </p>
     </div>
   );
 }
 
 const loginFallback = (
-  <div style={{ padding: 40, textAlign: "center", fontFamily: "sans-serif" }}>
-    <p style={{ color: "#666", fontSize: 16 }}>Checking session…</p>
+  <div style={{ padding: 40, textAlign: "center", fontFamily: "inherit", color: "var(--ink-soft)" }}>
+    <p style={{ fontSize: 16 }}>Checking session…</p>
   </div>
 );
 
