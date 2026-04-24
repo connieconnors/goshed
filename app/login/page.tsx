@@ -77,6 +77,11 @@ function LoginForm() {
         );
         return;
       }
+      try {
+        await fetch("/api/auth/password-set", { method: "POST", credentials: "include" });
+      } catch {
+        /* non-blocking: login still succeeds even if profile sync fails */
+      }
       localStorage.setItem(LAST_LOGIN_EMAIL_KEY, emailNorm);
       redirectAfterLogin();
     } finally {
