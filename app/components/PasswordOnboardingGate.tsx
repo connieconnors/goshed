@@ -9,6 +9,7 @@ import { MOMENT_COPY } from "@/lib/momentCopy";
 
 /** Set `true` to bypass the password onboarding modal (e.g. debugging header navigation). */
 const DISABLE_PASSWORD_ONBOARDING_GATE = false;
+const SKIP_PASSWORD_GATE_ONCE_KEY = "goshed_skip_password_gate_once";
 
 /**
  * After first magic-link sign-in, prompts for a password or skip based on public.users
@@ -23,14 +24,28 @@ export function PasswordOnboardingGate({ children }: { children: React.ReactNode
     pathname === "/login" || pathname === "/set-password" || pathname.startsWith("/auth/");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  /** Opt-in to nudges; pre-checked, saved with password or skip. */
-  const [notificationConsent, setNotificationConsent] = useState(true);
+  /** Opt-in to nudges; unchecked by default, saved with password or skip. */
+  const [notificationConsent, setNotificationConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [skipLoading, setSkipLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** null = eligibility not loaded yet; do not show the modal during this state. */
   const [eligible, setEligible] = useState<boolean | null>(null);
   const [eligibleLoading, setEligibleLoading] = useState(false);
+  const [skipGateOnce, setSkipGateOnce] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setSkipGateOnce(sessionStorage.getItem(SKIP_PASSWORD_GATE_ONCE_KEY) === "1");
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!skipGateOnce || typeof window === "undefined") return;
+    if (eligible === false || isAuthEntryRoute || !user) {
+      sessionStorage.removeItem(SKIP_PASSWORD_GATE_ONCE_KEY);
+      setSkipGateOnce(false);
+    }
+  }, [skipGateOnce, eligible, isAuthEntryRoute, user]);
 
   useEffect(() => {
     if (isAuthEntryRoute || !user) {
@@ -63,16 +78,13 @@ export function PasswordOnboardingGate({ children }: { children: React.ReactNode
     };
   }, [user?.id, loading, isAuthEntryRoute]);
 
-  useEffect(() => {
-    if (eligible === true) setNotificationConsent(true);
-  }, [eligible, user?.id]);
-
   const showGate =
     !isAuthEntryRoute &&
     !loading &&
     !eligibleLoading &&
     !!user &&
-    eligible === true;
+    eligible === true &&
+    !skipGateOnce;
 
   useEffect(() => {
     console.log("[PasswordOnboardingGate] state (client)", {
@@ -227,7 +239,7 @@ export function PasswordOnboardingGate({ children }: { children: React.ReactNode
               Set a password to protect your shed
             </h2>
             <p style={{ fontSize: 14, color: "var(--ink-soft)", lineHeight: 1.5, margin: "0 0 20px" }}>
-              You can always sign in with a link — a password lets you sign in faster on this device and keeps your list safer if someone else uses your email. Your first 20 items are free; you can subscribe later when you&apos;re ready.
+              Add a password to protect your account and keep your shed saved.
             </p>
             {error ? (
               <p style={{ color: "#c0392b", fontSize: 14, margin: "0 0 12px" }}>{error}</p>

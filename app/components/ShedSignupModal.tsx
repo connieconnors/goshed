@@ -8,6 +8,7 @@ import { useAuthSession } from "@/lib/auth-session-context";
 import { addEmailWithPassword } from "@/lib/authPasswordHint";
 
 const LAST_LOGIN_EMAIL_KEY = "goshed_last_login_email";
+const SKIP_PASSWORD_GATE_ONCE_KEY = "goshed_skip_password_gate_once";
 
 type Props = {
   open: boolean;
@@ -23,6 +24,7 @@ export function ShedSignupModal({ open, onClose }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [notificationConsent, setNotificationConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sentConfirmEmail, setSentConfirmEmail] = useState(false);
@@ -33,6 +35,7 @@ export function ShedSignupModal({ open, onClose }: Props) {
     if (!open) {
       setPassword("");
       setConfirm("");
+      setNotificationConsent(false);
       setError(null);
       setSentConfirmEmail(false);
       setSubmitting(false);
@@ -46,6 +49,7 @@ export function ShedSignupModal({ open, onClose }: Props) {
 
   const handleCreate = async () => {
     if (typeof window === "undefined" || !emailNorm.includes("@")) return;
+    sessionStorage.setItem(SKIP_PASSWORD_GATE_ONCE_KEY, "1");
     setError(null);
     const p = password.trim();
     if (p.length < 6) {
@@ -75,7 +79,12 @@ export function ShedSignupModal({ open, onClose }: Props) {
       }
       localStorage.setItem(LAST_LOGIN_EMAIL_KEY, emailNorm);
       if (data.session) {
-        const pr = await fetch("/api/auth/password-set", { method: "POST", credentials: "include" });
+        const pr = await fetch("/api/auth/password-set", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ notificationConsent }),
+        });
         if (!pr.ok) {
           const pb = await pr.json().catch(() => ({}));
           setError(typeof pb?.error === "string" ? pb.error : "Account created but profile could not be saved. Try signing in.");
@@ -126,6 +135,8 @@ export function ShedSignupModal({ open, onClose }: Props) {
           padding: 28,
           maxWidth: 400,
           width: "100%",
+          maxHeight: "90vh",
+          overflowY: "auto",
           boxShadow: "0 12px 40px rgba(44,36,22,0.18)",
           border: "1px solid var(--surface2)",
           fontFamily: "inherit",
@@ -188,6 +199,36 @@ export function ShedSignupModal({ open, onClose }: Props) {
             <p style={{ fontSize: 14, color: "var(--ink-soft)", lineHeight: 1.5, marginBottom: 20 }}>
               Save your progress and view everything you&apos;ve cleared in your Shed.
             </p>
+            <label
+              htmlFor="shed-signup-notify-consent"
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 10,
+                marginBottom: 14,
+                cursor: submitting ? "default" : "pointer",
+                userSelect: "none",
+              }}
+            >
+              <input
+                id="shed-signup-notify-consent"
+                type="checkbox"
+                checked={notificationConsent}
+                onChange={(e) => setNotificationConsent(e.target.checked)}
+                disabled={submitting}
+                style={{
+                  marginTop: 2,
+                  width: 16,
+                  height: 16,
+                  flexShrink: 0,
+                  accentColor: "var(--ink)",
+                  cursor: submitting ? "not-allowed" : "pointer",
+                }}
+              />
+              <span style={{ fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.45 }}>
+                Check the box for an occasional nudge to keep clearing your shed.
+              </span>
+            </label>
             {error ? (
               <p style={{ color: "#b42318", fontSize: 14, marginBottom: 12, lineHeight: 1.45 }}>{error}</p>
             ) : null}
