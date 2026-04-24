@@ -239,17 +239,18 @@ function LoginForm() {
         </button>
       </div>
 
-      <p style={{ marginTop: 28, marginBottom: 0, textAlign: "center", lineHeight: 1.5 }}>
+      <p style={{ marginTop: 28, marginBottom: 0, textAlign: "center", lineHeight: 1.45 }}>
         <Link
-          href="/"
+          href="/set-password"
           style={{
-            fontSize: 12,
-            color: "var(--ink-soft)",
+            fontSize: 16,
+            fontWeight: 600,
+            color: "var(--green)",
             textDecoration: "none",
             cursor: "pointer",
           }}
         >
-          New to GoShed? Just start using it — no account needed.
+          New to GoShed? Create an account →
         </Link>
       </p>
     </div>

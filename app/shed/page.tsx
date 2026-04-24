@@ -140,7 +140,7 @@ export default function ShedPage() {
     if (sessionLoading) return;
     let cancelled = false;
     if (!sessionUser) {
-      router.replace("/login?redirect=/shed");
+      router.replace("/set-password?redirect=/shed");
       setLoading(false);
       return;
     }

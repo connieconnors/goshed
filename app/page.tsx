@@ -7,6 +7,7 @@ import { useAuthSession } from '@/lib/auth-session-context';
 import { createSupabaseBrowserClient } from '@/lib/supabase';
 import { getRandomActionPrompt, type ActionPromptType } from '@/lib/actionPrompts';
 import { PaywallModal } from '@/app/components/PaywallModal';
+import { ShedSignupModal } from '@/app/components/ShedSignupModal';
 import { SentimentalNudge } from '@/components/SentimentalNudge';
 import {
   fetchConsignmentPlacesClient,
@@ -228,6 +229,7 @@ function HomeContent() {
    */
   const aiConsentAgreedThisSessionRef = useRef(false);
   const [showGuestGateModal, setShowGuestGateModal] = useState(false);
+  const [shedSignupModalOpen, setShedSignupModalOpen] = useState(false);
   /** Guest limit: completed flows (analyze + initial recommendation), not uploads alone. */
   const GUEST_ANALYSIS_LIMIT = 10;
   const GUEST_COUNT_KEY = "goshed_guest_analysis_count";
@@ -1504,9 +1506,19 @@ function HomeContent() {
                       + Add another item
                     </button>
                     <br />
-                    <Link href="/shed" style={postDecisionFooterActionStyle}>
-                      View your Shed →
-                    </Link>
+                    {authUser ? (
+                      <Link href="/shed" style={postDecisionFooterActionStyle}>
+                        View your Shed →
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setShedSignupModalOpen(true)}
+                        style={postDecisionFooterActionStyle}
+                      >
+                        View your Shed →
+                      </button>
+                    )}
                     <br />
                     <button
                       type="button"
@@ -1561,6 +1573,7 @@ function HomeContent() {
         voluntary={paywallVoluntary}
         beforeGuestPurchase={waitForAiConsentBeforeGuestPurchase}
       />
+      <ShedSignupModal open={shedSignupModalOpen} onClose={() => setShedSignupModalOpen(false)} />
       {showGuestGateModal && (
         <div
           role="dialog"

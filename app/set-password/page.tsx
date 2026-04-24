@@ -81,7 +81,7 @@ function SetPasswordForm() {
       if (signErr) {
         const msg = signErr.message?.toLowerCase() ?? "";
         if (msg.includes("already registered") || msg.includes("already been registered")) {
-          setError("That email already has an account — sign in on the login page with a link or password.");
+          setError("That email already has an account — sign in instead.");
         } else {
           setError(signErr.message || "Could not create account. Try again.");
         }
@@ -143,13 +143,19 @@ function SetPasswordForm() {
 
   return (
     <div style={{ padding: 40, maxWidth: 400, margin: "0 auto", fontFamily: "sans-serif" }}>
-      <h2 style={{ marginTop: 0 }}>Create a password</h2>
-      <p style={{ color: "#666", fontSize: 14, lineHeight: 1.5, marginBottom: 20 }}>
-        New to GoShed? Enter your email and choose a password. If you already use magic links, use{" "}
-        <Link href="/login" style={{ color: "#3d2e20", fontWeight: 500 }}>
-          Sign in
-        </Link>{" "}
-        instead.
+      <h2
+        style={{
+          marginTop: 0,
+          fontFamily: "var(--font-display)",
+          fontSize: 26,
+          fontWeight: 600,
+          color: "var(--ink)",
+        }}
+      >
+        Create your account
+      </h2>
+      <p style={{ color: "var(--ink-soft)", fontSize: 14, lineHeight: 1.5, marginBottom: 20 }}>
+        Enter your email and choose a password to get started.
       </p>
       {error ? (
         <p style={{ color: "#c00", fontSize: 14, marginBottom: 12 }}>{error}</p>
@@ -219,9 +225,9 @@ function SetPasswordForm() {
       >
         {submitting ? "Creating…" : "Create account"}
       </button>
-      <p style={{ marginTop: 16, textAlign: "center", fontSize: 14 }}>
-        <Link href="/login" style={{ color: "#3d2e20", textDecoration: "underline" }}>
-          Sign in with a magic link
+      <p style={{ marginTop: 20, marginBottom: 0, textAlign: "center", fontSize: 13, lineHeight: 1.45 }}>
+        <Link href="/login" style={{ color: "var(--ink-soft)", textDecoration: "underline" }}>
+          Already have an account? Sign in →
         </Link>
       </p>
     </div>
