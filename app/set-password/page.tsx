@@ -16,6 +16,7 @@ function SetPasswordForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [notificationConsent, setNotificationConsent] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [sessionWaitTimedOut, setSessionWaitTimedOut] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -89,7 +90,12 @@ function SetPasswordForm() {
       }
       localStorage.setItem(LAST_LOGIN_EMAIL_KEY, emailNorm);
       if (data.session) {
-        const pr = await fetch("/api/auth/password-set", { method: "POST", credentials: "include" });
+        const pr = await fetch("/api/auth/password-set", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ notificationConsent }),
+        });
         if (!pr.ok) {
           const pb = await pr.json().catch(() => ({}));
           setError(typeof pb?.error === "string" ? pb.error : "Account created but profile could not be saved. Try signing in.");
@@ -152,11 +158,41 @@ function SetPasswordForm() {
           color: "var(--ink)",
         }}
       >
-        Create your account
+        Create a free account
       </h2>
       <p style={{ color: "var(--ink-soft)", fontSize: 14, lineHeight: 1.5, marginBottom: 20 }}>
-        Enter your email and choose a password to get started.
+        Save your progress and view everything you&apos;ve cleared in your Shed.
       </p>
+      <label
+        htmlFor="set-password-notify-consent"
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 10,
+          marginBottom: 14,
+          cursor: submitting ? "default" : "pointer",
+          userSelect: "none",
+        }}
+      >
+        <input
+          id="set-password-notify-consent"
+          type="checkbox"
+          checked={notificationConsent}
+          onChange={(e) => setNotificationConsent(e.target.checked)}
+          disabled={submitting}
+          style={{
+            marginTop: 2,
+            width: 16,
+            height: 16,
+            flexShrink: 0,
+            accentColor: "var(--ink)",
+            cursor: submitting ? "not-allowed" : "pointer",
+          }}
+        />
+        <span style={{ fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.45 }}>
+          Check the box for an occasional nudge to keep clearing your shed.
+        </span>
+      </label>
       {error ? (
         <p style={{ color: "#c00", fontSize: 14, marginBottom: 12 }}>{error}</p>
       ) : null}
