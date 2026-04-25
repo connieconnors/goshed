@@ -2,6 +2,7 @@
   "name": "goshed",
   "version": "0.1.0",
   "private": true,
+  "main": "index.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -12,11 +13,13 @@
     "@revenuecat/purchases-js": "^1.28.0",
     "@supabase/ssr": "^0.9.0",
     "@supabase/supabase-js": "^2.98.0",
+    "expo": "^55.0.17",
     "heic-convert": "^2.1.0",
     "next": "16.1.6",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "resend": "^6.9.3"
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "resend": "^6.9.3",
+    "react-native": "0.83.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
