@@ -134,6 +134,11 @@ function SetPasswordForm() {
   if (sentConfirmEmail) {
     return (
       <div style={{ padding: 40, maxWidth: 400, margin: "0 auto", fontFamily: "sans-serif", textAlign: "center" }}>
+        <p style={{ margin: "0 0 16px" }}>
+          <Link href="/" style={{ fontSize: 13, color: "#666", textDecoration: "underline" }}>
+            ← Back to home
+          </Link>
+        </p>
         <h2>Confirm your email ✉️</h2>
         <p style={{ color: "#444", lineHeight: 1.5 }}>
           We sent a link to <strong>{emailNorm}</strong>. Open it to finish setting up your account.
@@ -149,6 +154,11 @@ function SetPasswordForm() {
 
   return (
     <div style={{ padding: 40, maxWidth: 400, margin: "0 auto", fontFamily: "sans-serif" }}>
+      <p style={{ margin: "0 0 16px", textAlign: "center" }}>
+        <Link href="/" style={{ fontSize: 13, color: "var(--ink-soft)", textDecoration: "underline" }}>
+          ← Back to home
+        </Link>
+      </p>
       <h2
         style={{
           marginTop: 0,

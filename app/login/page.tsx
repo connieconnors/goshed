@@ -148,6 +148,11 @@ function LoginForm() {
         color: "var(--ink)",
       }}
     >
+      <p style={{ margin: "0 0 16px", textAlign: "center" }}>
+        <Link href="/" style={{ fontSize: 13, color: "var(--ink-soft)", textDecoration: "underline" }}>
+          ← Back to home
+        </Link>
+      </p>
       <h2
         style={{
           fontFamily: "var(--font-display)",

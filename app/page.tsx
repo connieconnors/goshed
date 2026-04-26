@@ -14,7 +14,11 @@ import {
   type ConsignmentPlaceRow,
 } from '@/lib/fetchConsignmentPlacesClient';
 import { MOMENT_COPY } from '@/lib/momentCopy';
-import { FREE_LOGGED_IN_ITEM_LIMIT, GUEST_ANALYSIS_LIMIT } from '@/lib/freeTier';
+import {
+  FREE_LOGGED_IN_ITEM_LIMIT,
+  GUEST_ANALYSIS_LIMIT,
+  UPGRADE_NUDGE_AT_ITEM_COUNT,
+} from '@/lib/freeTier';
 import { guestGateDismissedInStorage, markGuestGateDismissed } from '@/lib/guestGateStorage';
 
 type AnalyzeResult = {
@@ -239,7 +243,7 @@ function HomeContent() {
     return Number.isFinite(n) ? n : 0;
   };
   const guestAnalysisCountRef = useRef(getStoredGuestCount());
-  const [nearLimitNudgeDismissed, setNearLimitNudgeDismissed] = useState(false);
+  const [upgradeMidTierNudgeDismissed, setUpgradeMidTierNudgeDismissed] = useState(false);
   /** Force guest-mode limit from URL (e.g. ?guest=1). Set in useEffect to avoid hydration mismatch. */
   const [forceGuestMode, setForceGuestMode] = useState(false);
   const effectiveGuest = (isLoggedIn !== true) || forceGuestMode;
@@ -1023,8 +1027,9 @@ function HomeContent() {
     <main style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '48px 24px' }}>
       <div style={{ width: '100%', maxWidth: '390px' }}>
         {isLoggedIn === true &&
-          savedItemCount === FREE_LOGGED_IN_ITEM_LIMIT - 1 &&
-          !nearLimitNudgeDismissed && (
+          typeof savedItemCount === "number" &&
+          savedItemCount === UPGRADE_NUDGE_AT_ITEM_COUNT &&
+          !upgradeMidTierNudgeDismissed && (
           <div
             role="status"
             style={{
@@ -1037,13 +1042,35 @@ function HomeContent() {
               paddingRight: 36,
             }}
           >
-            <p style={{ margin: 0, fontSize: 13, color: "var(--ink)", lineHeight: 1.5 }}>{MOMENT_COPY.nearLimitNudge}</p>
+            <p style={{ margin: 0, fontSize: 13, color: "var(--ink)", lineHeight: 1.5 }}>{MOMENT_COPY.upgradeNudgeTitle}</p>
             <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.45 }}>
-              {MOMENT_COPY.nearLimitNudgeSubtext}
+              {MOMENT_COPY.upgradeNudgeSubtext}
+            </p>
+            <p style={{ margin: "10px 0 0", fontSize: 12 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setPaywallVoluntary(true);
+                  setShowPaywallModal(true);
+                }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  margin: 0,
+                  cursor: "pointer",
+                  color: "var(--accent)",
+                  fontFamily: "inherit",
+                  fontSize: 12,
+                  textDecoration: "underline",
+                }}
+              >
+                Upgrade ✦
+              </button>
             </p>
             <button
               type="button"
-              onClick={() => setNearLimitNudgeDismissed(true)}
+              onClick={() => setUpgradeMidTierNudgeDismissed(true)}
               aria-label="Dismiss"
               style={{
                 position: "absolute",
@@ -1156,7 +1183,7 @@ function HomeContent() {
           )}
         </div>
 
-        {/* Logged-out only: tagline, example pills, no-account line */}
+        {/* Tagline + pills when logged out; free-tier line always so signed-in users still see pricing */}
         <div style={{ marginTop: '28px', textAlign: 'center' }}>
           {isLoggedIn === false ? (
             <>
@@ -1181,23 +1208,38 @@ function HomeContent() {
                   </span>
                 ))}
               </div>
-              <p style={{ fontSize: '12px', color: 'var(--ink-soft)', marginTop: '14px', marginBottom: 0 }}>
-                No account needed to try
-              </p>
-              <p
-                style={{
-                  fontSize: '12px',
-                  color: 'var(--ink-soft)',
-                  marginTop: '8px',
-                  marginBottom: 0,
-                  fontStyle: 'italic',
-                  lineHeight: 1.45,
-                }}
-              >
-                Free for your first {FREE_LOGGED_IN_ITEM_LIMIT} items. Upgrade anytime.
-              </p>
             </>
           ) : null}
+          {isLoggedIn === false ? (
+            <p style={{ fontSize: '12px', color: 'var(--ink-soft)', marginTop: '14px', marginBottom: 0 }}>
+              No account needed to try
+            </p>
+          ) : (
+            <p style={{ fontSize: '12px', color: 'var(--ink-soft)', marginTop: '14px', marginBottom: 0 }}>
+              Your plan: first {FREE_LOGGED_IN_ITEM_LIMIT} items free
+            </p>
+          )}
+          <p
+            style={{
+              fontSize: '12px',
+              color: 'var(--ink-soft)',
+              marginTop: '8px',
+              marginBottom: 0,
+              fontStyle: 'italic',
+              lineHeight: 1.45,
+            }}
+          >
+            {isLoggedIn === true &&
+            typeof savedItemCount === 'number' &&
+            savedItemCount > 0 &&
+            savedItemCount < FREE_LOGGED_IN_ITEM_LIMIT ? (
+              <>
+                {savedItemCount} of {FREE_LOGGED_IN_ITEM_LIMIT} free items used — upgrade anytime.
+              </>
+            ) : (
+              <>Free for your first {FREE_LOGGED_IN_ITEM_LIMIT} items. Upgrade anytime.</>
+            )}
+          </p>
         </div>
 
         {/* Loading state: minimal, centered under image */}
