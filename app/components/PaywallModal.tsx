@@ -5,8 +5,8 @@ import { MOMENT_COPY } from "@/lib/momentCopy";
 import { FREE_LOGGED_IN_ITEM_LIMIT } from "@/lib/freeTier";
 import { useAuthSession } from "@/lib/auth-session-context";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
-import { Purchases } from "@revenuecat/purchases-js";
-import type { Package, Offerings } from "@revenuecat/purchases-js";
+import { PackageType, Purchases } from "@revenuecat/purchases-js";
+import type { Offering, Package, Offerings } from "@revenuecat/purchases-js";
 
 type PaywallModalProps = {
   open: boolean;
@@ -20,6 +20,20 @@ type PaywallModalProps = {
 };
 
 const API_KEY = process.env.NEXT_PUBLIC_REVENUECAT_API_KEY ?? "";
+
+/**
+ * RevenueCat only fills `offering.monthly` / `offering.annual` when packages use the
+ * standard $rc_monthly / $rc_annual identifiers. Custom package IDs still appear in
+ * `availablePackages` with the right PackageType — use this so checkout works either way.
+ */
+function resolveSubscriptionPackage(offering: Offering | null, plan: "monthly" | "annual"): Package | null {
+  if (!offering) return null;
+  const fromSlot = plan === "monthly" ? offering.monthly : offering.annual;
+  if (fromSlot) return fromSlot;
+  const want = plan === "monthly" ? PackageType.Monthly : PackageType.Annual;
+  const list = offering.availablePackages ?? [];
+  return list.find((p) => p.packageType === want) ?? null;
+}
 
 /** Plain-object summary for console debugging (RevenueCat SDK objects are not always JSON-serializable). */
 function summarizeOfferings(offerings: Offerings) {
@@ -164,10 +178,8 @@ export function PaywallModal({
 
       if (!API_KEY.trim()) {
         lastOfferingsSnapshotRef.current = { reason: "missing_NEXT_PUBLIC_REVENUECAT_API_KEY" };
-        console.warn("[PaywallModal] RevenueCat disabled:", lastOfferingsSnapshotRef.current);
-        setPlansIssueMessage(
-          "Subscriptions aren’t available in this build (missing RevenueCat public key). Add NEXT_PUBLIC_REVENUECAT_API_KEY to your environment and redeploy."
-        );
+        console.warn("[PaywallModal] Billing key missing — set NEXT_PUBLIC_REVENUECAT_API_KEY", lastOfferingsSnapshotRef.current);
+        setPlansIssueMessage("Subscription options aren’t available in this version of the app. Try again later or use “Have a code?” below.");
         finish();
         return;
       }
@@ -202,8 +214,8 @@ export function PaywallModal({
         clearTimeout(timeoutId);
         if (cancelled) return;
         const current = offerings.current;
-        const monthly = current?.monthly ?? null;
-        const yearly = current?.annual ?? null;
+        const monthly = resolveSubscriptionPackage(current, "monthly");
+        const yearly = resolveSubscriptionPackage(current, "annual");
         const summary = summarizeOfferings(offerings);
         lastOfferingsSnapshotRef.current = {
           source: "getOfferings_ok",
@@ -215,8 +227,9 @@ export function PaywallModal({
         setMonthlyPackage(monthly);
         setYearlyPackage(yearly);
         if (!monthly && !yearly) {
+          console.warn("[PaywallModal] No monthly/annual package on current offering — check RC dashboard package types ($rc_monthly / $rc_annual or matching types).", summary);
           setPlansIssueMessage(
-            "No subscription plans were returned. In RevenueCat, set a current offering with monthly and annual packages (or check the public API key matches this app)."
+            "We couldn’t load subscription plans. Tap Try again, or use “Have a code?” if you have one."
           );
         } else {
           setPlansIssueMessage(null);
@@ -229,12 +242,11 @@ export function PaywallModal({
           source: "getOfferings_throw",
           errorMessage: message,
         };
-        console.warn("[PaywallModal] RevenueCat getOfferings failed:", lastOfferingsSnapshotRef.current, err);
+        console.warn("[PaywallModal] getOfferings failed:", lastOfferingsSnapshotRef.current, err);
         setMonthlyPackage(null);
         setYearlyPackage(null);
-        const short = message.length > 160 ? `${message.slice(0, 157)}…` : message;
         setPlansIssueMessage(
-          `Couldn’t load plans from RevenueCat. ${short ? `(${short}) ` : ""}Tap Try again, or use a promo code below.`
+          "We couldn’t load subscription options. Check your connection, tap Try again, or use “Have a code?” below."
         );
       } finally {
         if (!cancelled) clearTimeout(timeoutId);
@@ -321,7 +333,7 @@ export function PaywallModal({
 
       if (created) {
         try {
-          localStorage.removeItem("goshed_ai_consent");
+          localStorage.setItem("goshed_ai_consent", "1");
         } catch {
           /* ignore */
         }
@@ -386,7 +398,7 @@ export function PaywallModal({
       await beforeGuestPurchase?.();
 
       if (!API_KEY.trim()) {
-        setUpgradeNudgeError("Subscriptions are not available in this build.");
+        setUpgradeNudgeError("Subscription checkout isn’t available in this version. Try again later.");
         return;
       }
 
@@ -405,17 +417,23 @@ export function PaywallModal({
         return;
       }
 
+      const curOffering = offerings.current;
       const pkg =
-        plan === "annual" ? (offerings.current?.annual ?? null) : (offerings.current?.monthly ?? null);
+        plan === "annual"
+          ? resolveSubscriptionPackage(curOffering, "annual")
+          : resolveSubscriptionPackage(curOffering, "monthly");
       if (!pkg) {
-        setUpgradeNudgeError("That plan is not available right now. Try again.");
+        console.warn("[PaywallModal] Post–nudge checkout: no package for plan", plan, summarizeOfferings(offerings));
+        setUpgradeNudgeError(
+          "That plan couldn’t be loaded. Close this window and tap Try again on the subscription screen."
+        );
         return;
       }
 
       pendingUpgradePlanRef.current = null;
       pendingUpgradeUserIdRef.current = null;
-      setMonthlyPackage(offerings.current?.monthly ?? null);
-      setYearlyPackage(offerings.current?.annual ?? null);
+      setMonthlyPackage(resolveSubscriptionPackage(curOffering, "monthly"));
+      setYearlyPackage(resolveSubscriptionPackage(curOffering, "annual"));
       setUpgradeNudgeModalOpen(false);
       await handlePurchase(pkg);
     } finally {
@@ -597,7 +615,7 @@ export function PaywallModal({
               >
                 <p style={{ margin: "0 0 12px", fontSize: 14, color: "var(--ink)", lineHeight: 1.5 }}>
                   {plansIssueMessage ??
-                    "We couldn’t load subscription options. Check your connection, RevenueCat setup, and environment key."}
+                    "We couldn’t load subscription options. Check your connection and tap Try again."}
                 </p>
                 <button
                   type="button"
@@ -985,7 +1003,7 @@ export function PaywallModal({
                 }}
               />
               <span style={{ fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.45 }}>
-                Check the box for an occasional nudge to keep clearing your shed.
+                {MOMENT_COPY.notificationNudgeCheckboxLabel}
               </span>
             </label>
             {upgradeNudgeError ? (
