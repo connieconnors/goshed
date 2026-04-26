@@ -47,6 +47,15 @@ export function ShedSignupModal({ open, onClose }: Props) {
     if (last && last.includes("@")) setEmail(last);
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !submitting) onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose, submitting]);
+
   const handleCreate = async () => {
     if (typeof window === "undefined" || !emailNorm.includes("@")) return;
     sessionStorage.setItem(SKIP_PASSWORD_GATE_ONCE_KEY, "1");
@@ -130,6 +139,7 @@ export function ShedSignupModal({ open, onClose }: Props) {
         aria-labelledby="shed-signup-title"
         onClick={(e) => e.stopPropagation()}
         style={{
+          position: "relative",
           background: "var(--white)",
           borderRadius: 18,
           padding: 28,
@@ -143,6 +153,31 @@ export function ShedSignupModal({ open, onClose }: Props) {
           color: "var(--ink)",
         }}
       >
+        <button
+          type="button"
+          aria-label="Close create account"
+          onClick={() => {
+            if (!submitting) onClose();
+          }}
+          disabled={submitting}
+          style={{
+            position: "absolute",
+            top: 10,
+            right: 10,
+            width: 32,
+            height: 32,
+            borderRadius: 999,
+            border: "1px solid var(--surface2)",
+            background: "var(--white)",
+            color: "var(--ink-soft)",
+            fontSize: 18,
+            lineHeight: "30px",
+            textAlign: "center",
+            cursor: submitting ? "not-allowed" : "pointer",
+          }}
+        >
+          ×
+        </button>
         {sentConfirmEmail ? (
           <>
             <h2

@@ -422,6 +422,16 @@ function HomeContent() {
   const handleZoneClick = () => inputRef.current?.click();
 
   const handleAiConsentAccept = async () => {
+    if (typeof window !== "undefined") {
+      try {
+        const bridge = (
+          window as Window & { ReactNativeWebView?: { postMessage: (data: string) => void } }
+        ).ReactNativeWebView;
+        bridge?.postMessage("goshed-native-ai-consent-accepted");
+      } catch {
+        /* not running inside the native WebView shell */
+      }
+    }
     aiConsentAgreedThisSessionRef.current = true;
     localStorage.setItem("goshed_ai_consent", "1");
     try {
@@ -598,12 +608,11 @@ function HomeContent() {
     }
   };
 
-  /** After confirming a decision: clear the flow and open the device camera (capture) immediately. */
+  /** After confirming a decision: clear the flow and return to the home upload zone. */
   const handleAddAnotherItem = () => {
     const cam = addAnotherCameraInputRef.current;
     if (cam) cam.value = '';
-    // Keep .click() in the same synchronous user gesture as the tap (iOS); state clears right after.
-    cam?.click();
+    if (inputRef.current) inputRef.current.value = '';
 
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(null);
@@ -1670,8 +1679,13 @@ function HomeContent() {
             <h2 style={{ fontFamily: "var(--font-cormorant)", fontSize: "22px", fontWeight: 600, color: "var(--ink)", marginBottom: "12px" }}>
               A note about AI
             </h2>
-            <p style={{ fontSize: "14px", color: "var(--ink-soft)", lineHeight: 1.6, marginBottom: "20px" }}>
+            <p style={{ fontSize: "14px", color: "var(--ink-soft)", lineHeight: 1.6, marginBottom: "12px" }}>
               GoShed uses AI to analyze your photos and suggest what to do with your items. Photos are sent to <strong style={{ color: "var(--ink)" }}>Anthropic (Claude)</strong> to generate recommendations. We don&apos;t use your data for advertising or share it with anyone else.
+            </p>
+            <p style={{ fontSize: "13px", color: "var(--ink-soft)", lineHeight: 1.55, marginBottom: "20px" }}>
+              <em style={{ fontStyle: "italic", color: "var(--ink-soft)" }}>
+                GoShed uses your camera to photograph items and help you decide what to do with them. After you tap Got it, iOS may ask for camera access—only if you want to snap photos here.
+              </em>
             </p>
             <button
               type="button"
