@@ -71,9 +71,19 @@ export function PaywallModal({
   const [upgradeNudgeError, setUpgradeNudgeError] = useState<string | null>(null);
   const pendingUpgradePlanRef = useRef<"annual" | "monthly" | null>(null);
   const pendingUpgradeUserIdRef = useRef<string | null>(null);
+  /** Bumps to re-run RevenueCat offerings fetch (Try again). */
+  const [offeringsRetryNonce, setOfferingsRetryNonce] = useState(0);
+  /** User-visible reason when signed-in plans are missing or failed to load. */
+  const [plansIssueMessage, setPlansIssueMessage] = useState<string | null>(null);
   /** Last RevenueCat offerings summary or fetch outcome (for paywall disabled diagnostics). */
   const lastOfferingsSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const { refresh } = useAuthSession();
+
+  const retryPlansFetch = useCallback(() => {
+    setPlansIssueMessage(null);
+    setPurchaseError(null);
+    setOfferingsRetryNonce((n) => n + 1);
+  }, []);
 
   const ensureConfigured = useCallback(async (appUserId: string): Promise<boolean> => {
     if (!API_KEY) return false;
@@ -117,6 +127,8 @@ export function PaywallModal({
       setUpgradeNudgeError(null);
       pendingUpgradePlanRef.current = null;
       pendingUpgradeUserIdRef.current = null;
+      setOfferingsRetryNonce(0);
+      setPlansIssueMessage(null);
       return;
     }
 
@@ -136,6 +148,7 @@ export function PaywallModal({
       setMonthlyPackage(null);
       setYearlyPackage(null);
       setPurchaseError(null);
+      setPlansIssueMessage(null);
 
       const snap = await refresh();
       const uid = snap.user?.id ?? null;
@@ -151,6 +164,9 @@ export function PaywallModal({
       if (!API_KEY.trim()) {
         lastOfferingsSnapshotRef.current = { reason: "missing_NEXT_PUBLIC_REVENUECAT_API_KEY" };
         console.warn("[PaywallModal] RevenueCat disabled:", lastOfferingsSnapshotRef.current);
+        setPlansIssueMessage(
+          "Subscriptions aren’t available in this build (missing RevenueCat public key). Add NEXT_PUBLIC_REVENUECAT_API_KEY to your environment and redeploy."
+        );
         finish();
         return;
       }
@@ -160,6 +176,7 @@ export function PaywallModal({
       if (!ok) {
         lastOfferingsSnapshotRef.current = { reason: "Purchases.configure_or_changeUser_failed" };
         console.warn("[PaywallModal] RevenueCat configure failed:", lastOfferingsSnapshotRef.current);
+        setPlansIssueMessage("Couldn’t connect to billing. Check your connection and tap Try again.");
         finish();
         return;
       }
@@ -174,6 +191,7 @@ export function PaywallModal({
         console.warn("[PaywallModal] RevenueCat getOfferings timed out:", lastOfferingsSnapshotRef.current);
         setMonthlyPackage(null);
         setYearlyPackage(null);
+        setPlansIssueMessage("Loading plans took too long. Check your connection, then tap Try again.");
         finish();
       }, OFFERINGS_TIMEOUT_MS);
 
@@ -195,6 +213,13 @@ export function PaywallModal({
         console.log("[PaywallModal] RevenueCat getOfferings:", lastOfferingsSnapshotRef.current);
         setMonthlyPackage(monthly);
         setYearlyPackage(yearly);
+        if (!monthly && !yearly) {
+          setPlansIssueMessage(
+            "No subscription plans were returned. In RevenueCat, set a current offering with monthly and annual packages (or check the public API key matches this app)."
+          );
+        } else {
+          setPlansIssueMessage(null);
+        }
       } catch (err: unknown) {
         clearTimeout(timeoutId);
         if (cancelled) return;
@@ -206,6 +231,10 @@ export function PaywallModal({
         console.warn("[PaywallModal] RevenueCat getOfferings failed:", lastOfferingsSnapshotRef.current, err);
         setMonthlyPackage(null);
         setYearlyPackage(null);
+        const short = message.length > 160 ? `${message.slice(0, 157)}…` : message;
+        setPlansIssueMessage(
+          `Couldn’t load plans from RevenueCat. ${short ? `(${short}) ` : ""}Tap Try again, or use a promo code below.`
+        );
       } finally {
         if (!cancelled) clearTimeout(timeoutId);
         finish();
@@ -216,7 +245,7 @@ export function PaywallModal({
     return () => {
       cancelled = true;
     };
-  }, [open, ensureConfigured, refresh]);
+  }, [open, ensureConfigured, refresh, offeringsRetryNonce]);
 
   const handlePurchase = useCallback(
     async (pkg: Package | null) => {
@@ -470,6 +499,8 @@ export function PaywallModal({
 
   const yearDisabled = purchasing || !yearlyPackage;
   const monthDisabled = purchasing || !monthlyPackage;
+  const signedInPlansMissing =
+    signedIn && showPurchaseRow && !purchasing && !yearlyPackage && !monthlyPackage;
 
   return (
     <div
@@ -553,40 +584,72 @@ export function PaywallModal({
 
         {showPurchaseRow ? (
           <>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <button
-                type="button"
-                disabled={signedIn ? yearDisabled : false}
-                onClick={onYearClick}
-                className="goshed-primary-btn"
+            {signedInPlansMissing ? (
+              <div
                 style={{
-                  width: "100%",
-                  justifyContent: "center",
-                  padding: "14px 20px",
-                  cursor: signedIn && yearDisabled ? "not-allowed" : "pointer",
-                }}
-              >
-                {purchasing ? "Processing…" : "Get the year — $24.99"}
-              </button>
-              <button
-                type="button"
-                disabled={signedIn ? monthDisabled : false}
-                onClick={onMonthClick}
-                style={{
-                  width: "100%",
-                  padding: "14px 20px",
-                  background: "transparent",
-                  color: "var(--ink)",
-                  border: "1px solid var(--surface2)",
+                  marginBottom: 16,
+                  padding: "14px 14px",
                   borderRadius: 12,
-                  fontSize: 16,
-                  cursor: signedIn && monthDisabled ? "not-allowed" : "pointer",
-                  fontFamily: "inherit",
+                  border: "1px solid var(--surface2)",
+                  background: "var(--surface1, #f8fafc)",
                 }}
               >
-                {purchasing ? "Processing…" : "Continue — $2.99/month"}
-              </button>
-            </div>
+                <p style={{ margin: "0 0 12px", fontSize: 14, color: "var(--ink)", lineHeight: 1.5 }}>
+                  {plansIssueMessage ??
+                    "We couldn’t load subscription options. Check your connection, RevenueCat setup, and environment key."}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => retryPlansFetch()}
+                  className="goshed-primary-btn"
+                  style={{
+                    width: "100%",
+                    justifyContent: "center",
+                    padding: "12px 16px",
+                    fontSize: 15,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Try again
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <button
+                  type="button"
+                  disabled={signedIn ? yearDisabled : false}
+                  onClick={onYearClick}
+                  className="goshed-primary-btn"
+                  style={{
+                    width: "100%",
+                    justifyContent: "center",
+                    padding: "14px 20px",
+                    cursor: signedIn && yearDisabled ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {purchasing ? "Processing…" : "Get the year — $24.99"}
+                </button>
+                <button
+                  type="button"
+                  disabled={signedIn ? monthDisabled : false}
+                  onClick={onMonthClick}
+                  style={{
+                    width: "100%",
+                    padding: "14px 20px",
+                    background: "transparent",
+                    color: "var(--ink)",
+                    border: "1px solid var(--surface2)",
+                    borderRadius: 12,
+                    fontSize: 16,
+                    cursor: signedIn && monthDisabled ? "not-allowed" : "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {purchasing ? "Processing…" : "Continue — $2.99/month"}
+                </button>
+              </div>
+            )}
             <p style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 8, textAlign: "center", lineHeight: 1.5 }}>
               Cancel anytime.
             </p>
