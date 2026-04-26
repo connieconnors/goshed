@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { MOMENT_COPY } from "@/lib/momentCopy";
+import { FREE_LOGGED_IN_ITEM_LIMIT } from "@/lib/freeTier";
 import { useAuthSession } from "@/lib/auth-session-context";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
 import { Purchases } from "@revenuecat/purchases-js";
@@ -40,7 +41,7 @@ export function PaywallModal({
   open,
   onClose,
   onPurchaseSuccess,
-  itemCount: _itemCount = 20,
+  itemCount: _itemCount = FREE_LOGGED_IN_ITEM_LIMIT,
   voluntary = false,
   beforeGuestPurchase,
 }: PaywallModalProps) {

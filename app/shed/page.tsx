@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuthSession } from "@/lib/auth-session-context";
+import { PaywallModal } from "@/app/components/PaywallModal";
+import { FREE_LOGGED_IN_ITEM_LIMIT } from "@/lib/freeTier";
 
 type ShedItem = {
   id: string;
@@ -125,12 +127,25 @@ function PileItemLink({ item }: { item: ShedItem }) {
 
 export default function ShedPage() {
   const router = useRouter();
-  const { user: sessionUser, loading: sessionLoading } = useAuthSession();
+  const { user: sessionUser, loading: sessionLoading, itemCount, refresh: refreshAuthSession } = useAuthSession();
   const [items, setItems] = useState<ShedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [clearedExpanded, setClearedExpanded] = useState(true);
+  const [showPaywallModal, setShowPaywallModal] = useState(false);
+
+  const refetchItems = useCallback(() => {
+    fetch("/api/items", { credentials: "include" })
+      .then((res) => {
+        if (!res.ok) return [];
+        return res.json();
+      })
+      .then((data) => {
+        setItems(Array.isArray(data) ? (data as ShedItem[]) : []);
+      })
+      .catch((err) => console.error("[shed] fetch error:", err));
+  }, []);
 
   useEffect(() => {
     setMounted(true);
@@ -192,6 +207,15 @@ export default function ShedPage() {
     }));
     return { bucketMap: map, clearedItems: cleared, buckets: bucketList };
   }, [items]);
+
+  const savedItemTotal =
+    typeof itemCount === "number" && Number.isFinite(itemCount) ? itemCount : items.length;
+
+  const closePaywallModal = useCallback(() => {
+    setShowPaywallModal(false);
+    void refreshAuthSession();
+    refetchItems();
+  }, [refreshAuthSession, refetchItems]);
 
   if (loading) {
     return (
@@ -258,6 +282,48 @@ export default function ShedPage() {
         >
           My Shed
         </h1>
+        <p
+          style={{
+            margin: "-0.35rem 0 0.75rem",
+            fontSize: "12px",
+            color: "var(--ink-soft)",
+            lineHeight: 1.45,
+            fontFamily: "var(--font-body)",
+          }}
+        >
+          <span style={{ fontStyle: "italic" }}>
+            {savedItemTotal} of {FREE_LOGGED_IN_ITEM_LIMIT} items
+          </span>
+          <span style={{ color: "var(--surface2)", margin: "0 0.35rem" }}>·</span>
+          <button
+            type="button"
+            onClick={() => setShowPaywallModal(true)}
+            style={{
+              background: "none",
+              border: "none",
+              padding: 0,
+              margin: 0,
+              cursor: "pointer",
+              color: "var(--accent)",
+              fontSize: "12px",
+              fontFamily: "inherit",
+              textDecoration: "underline",
+            }}
+          >
+            Upgrade ✦
+          </button>
+        </p>
+
+        <PaywallModal
+          open={showPaywallModal}
+          onClose={closePaywallModal}
+          voluntary
+          itemCount={FREE_LOGGED_IN_ITEM_LIMIT}
+          onPurchaseSuccess={() => {
+            void refreshAuthSession();
+            refetchItems();
+          }}
+        />
 
         <div style={{ display: "flex", flexDirection: "column", gap: "10px", paddingBottom: "0.5rem" }}>
           {(["sell", "donate", "gift"] as const).map((id) => {

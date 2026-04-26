@@ -14,6 +14,7 @@ import {
   type ConsignmentPlaceRow,
 } from '@/lib/fetchConsignmentPlacesClient';
 import { MOMENT_COPY } from '@/lib/momentCopy';
+import { FREE_LOGGED_IN_ITEM_LIMIT, GUEST_ANALYSIS_LIMIT } from '@/lib/freeTier';
 import { guestGateDismissedInStorage, markGuestGateDismissed } from '@/lib/guestGateStorage';
 
 type AnalyzeResult = {
@@ -219,7 +220,7 @@ function HomeContent() {
   const [showPaywallModal, setShowPaywallModal] = useState(false);
   /** True when opened from footer Upgrade (voluntary title); false for item-limit / ?paywall=1. */
   const [paywallVoluntary, setPaywallVoluntary] = useState(false);
-  const [paywallItemCount, setPaywallItemCount] = useState(20);
+  const [paywallItemCount, setPaywallItemCount] = useState(FREE_LOGGED_IN_ITEM_LIMIT);
   const [showAiConsent, setShowAiConsent] = useState(false);
   /** Resolves when user accepts AI note during Upgrade guest → purchase (see `waitForAiConsentBeforeGuestPurchase`). */
   const aiConsentGuestPurchaseResolverRef = useRef<(() => void) | null>(null);
@@ -230,8 +231,6 @@ function HomeContent() {
   const aiConsentAgreedThisSessionRef = useRef(false);
   const [showGuestGateModal, setShowGuestGateModal] = useState(false);
   const [shedSignupModalOpen, setShedSignupModalOpen] = useState(false);
-  /** Guest limit: completed flows (analyze + initial recommendation), not uploads alone. */
-  const GUEST_ANALYSIS_LIMIT = 10;
   const GUEST_COUNT_KEY = "goshed_guest_analysis_count";
   const getStoredGuestCount = (): number => {
     if (typeof localStorage === "undefined") return 0;
@@ -240,7 +239,7 @@ function HomeContent() {
     return Number.isFinite(n) ? n : 0;
   };
   const guestAnalysisCountRef = useRef(getStoredGuestCount());
-  const [item19NudgeDismissed, setItem19NudgeDismissed] = useState(false);
+  const [nearLimitNudgeDismissed, setNearLimitNudgeDismissed] = useState(false);
   /** Force guest-mode limit from URL (e.g. ?guest=1). Set in useEffect to avoid hydration mismatch. */
   const [forceGuestMode, setForceGuestMode] = useState(false);
   const effectiveGuest = (isLoggedIn !== true) || forceGuestMode;
@@ -493,7 +492,7 @@ function HomeContent() {
       }
       if (res.status === 402) {
         setPaywallVoluntary(false);
-        setPaywallItemCount(typeof data.itemCount === 'number' ? data.itemCount : 20);
+        setPaywallItemCount(typeof data.itemCount === 'number' ? data.itemCount : FREE_LOGGED_IN_ITEM_LIMIT);
         setShowPaywallModal(true);
         setLoading(false);
         return;
@@ -1023,7 +1022,9 @@ function HomeContent() {
   return (
     <main style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '48px 24px' }}>
       <div style={{ width: '100%', maxWidth: '390px' }}>
-        {isLoggedIn === true && savedItemCount === 19 && !item19NudgeDismissed && (
+        {isLoggedIn === true &&
+          savedItemCount === FREE_LOGGED_IN_ITEM_LIMIT - 1 &&
+          !nearLimitNudgeDismissed && (
           <div
             role="status"
             style={{
@@ -1036,13 +1037,13 @@ function HomeContent() {
               paddingRight: 36,
             }}
           >
-            <p style={{ margin: 0, fontSize: 13, color: "var(--ink)", lineHeight: 1.5 }}>{MOMENT_COPY.item19Nudge}</p>
+            <p style={{ margin: 0, fontSize: 13, color: "var(--ink)", lineHeight: 1.5 }}>{MOMENT_COPY.nearLimitNudge}</p>
             <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.45 }}>
-              {MOMENT_COPY.item19NudgeSubtext}
+              {MOMENT_COPY.nearLimitNudgeSubtext}
             </p>
             <button
               type="button"
-              onClick={() => setItem19NudgeDismissed(true)}
+              onClick={() => setNearLimitNudgeDismissed(true)}
               aria-label="Dismiss"
               style={{
                 position: "absolute",
@@ -1182,6 +1183,18 @@ function HomeContent() {
               </div>
               <p style={{ fontSize: '12px', color: 'var(--ink-soft)', marginTop: '14px', marginBottom: 0 }}>
                 No account needed to try
+              </p>
+              <p
+                style={{
+                  fontSize: '12px',
+                  color: 'var(--ink-soft)',
+                  marginTop: '8px',
+                  marginBottom: 0,
+                  fontStyle: 'italic',
+                  lineHeight: 1.45,
+                }}
+              >
+                Free for your first {FREE_LOGGED_IN_ITEM_LIMIT} items. Upgrade anytime.
               </p>
             </>
           ) : null}
