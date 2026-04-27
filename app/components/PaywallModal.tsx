@@ -790,9 +790,6 @@ export function PaywallModal({
             >
               Create account to continue
             </h3>
-            <p style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.45, margin: "0 0 14px" }}>
-              {guestPendingPlan === "annual" ? "Annual plan" : "Monthly plan"} — no email link; use a password you&apos;ll remember.
-            </p>
             <input
               type="email"
               value={guestEmail}
@@ -1003,7 +1000,7 @@ export function PaywallModal({
                 }}
               />
               <span style={{ fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.45 }}>
-                {MOMENT_COPY.notificationNudgeCheckboxLabel}
+                Email me occasionally — I declutter better with a nudge
               </span>
             </label>
             {upgradeNudgeError ? (

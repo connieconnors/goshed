@@ -1162,9 +1162,14 @@ function HomeContent() {
             </>
           ) : null}
           {isLoggedIn === false ? (
-            <p style={{ fontSize: '12px', color: 'var(--ink-soft)', marginTop: '14px', marginBottom: 0 }}>
-              No account needed to try
-            </p>
+            <>
+              <p style={{ fontSize: '12px', color: 'var(--ink-soft)', marginTop: '14px', marginBottom: 0 }}>
+                No account needed to try
+              </p>
+              <p style={{ fontSize: '12px', color: 'var(--ink-soft)', marginTop: '8px', marginBottom: 0, fontStyle: 'italic', lineHeight: 1.45 }}>
+                Free for your first 10 items. Upgrade anytime.
+              </p>
+            </>
           ) : null}
         </div>
 

@@ -261,7 +261,7 @@ export function ShedSignupModal({ open, onClose }: Props) {
                 }}
               />
               <span style={{ fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.45 }}>
-                Check the box for an occasional nudge to keep clearing your shed.
+                Email me occasionally — I declutter better with a nudge
               </span>
             </label>
             {error ? (
