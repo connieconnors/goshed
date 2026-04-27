@@ -17,9 +17,7 @@ import { MOMENT_COPY } from '@/lib/momentCopy';
 import {
   FREE_LOGGED_IN_ITEM_LIMIT,
   GUEST_ANALYSIS_LIMIT,
-  UPGRADE_NUDGE_AT_ITEM_COUNT,
 } from '@/lib/freeTier';
-import { guestGateDismissedInStorage, markGuestGateDismissed } from '@/lib/guestGateStorage';
 
 type AnalyzeResult = {
   item_label: string;
@@ -212,7 +210,6 @@ function HomeContent() {
     refresh: refreshAuthSession,
     loading: sessionLoading,
     user: authUser,
-    itemCount: savedItemCount,
     welcomeSent,
   } = useAuthSession();
   const isLoggedIn = sessionLoading ? null : !!authUser;
@@ -224,6 +221,8 @@ function HomeContent() {
   const [donationPlacesFetchDone, setDonationPlacesFetchDone] = useState(false);
   const [rainNext24h, setRainNext24h] = useState<boolean | null>(null);
   const [showPaywallModal, setShowPaywallModal] = useState(false);
+  const [showFreePlanNudge, setShowFreePlanNudge] = useState(false);
+  const freePlanNudgeDismissedThisSessionRef = useRef(false);
   /** True when opened from footer Upgrade (voluntary title); false for item-limit / ?paywall=1. */
   const [paywallVoluntary, setPaywallVoluntary] = useState(false);
   const [paywallItemCount, setPaywallItemCount] = useState(FREE_LOGGED_IN_ITEM_LIMIT);
@@ -245,22 +244,9 @@ function HomeContent() {
     return Number.isFinite(n) ? n : 0;
   };
   const guestAnalysisCountRef = useRef(getStoredGuestCount());
-  const UPGRADE_NUDGE_DISMISSED_KEY = "goshed_upgrade_mid_nudge_dismissed";
-  const [upgradeMidTierNudgeDismissed, setUpgradeMidTierNudgeDismissed] = useState(false);
   /** Force guest-mode limit from URL (e.g. ?guest=1). Set in useEffect to avoid hydration mismatch. */
   const [forceGuestMode, setForceGuestMode] = useState(false);
   const effectiveGuest = (isLoggedIn !== true) || forceGuestMode;
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      if (localStorage.getItem(UPGRADE_NUDGE_DISMISSED_KEY) === "1") {
-        setUpgradeMidTierNudgeDismissed(true);
-      }
-    } catch {
-      /* ignore */
-    }
-  }, []);
 
   useEffect(() => {
     if (chosenDecision == null || chosenDecision !== 'sell') {
@@ -275,7 +261,7 @@ function HomeContent() {
     const next = (guestAnalysisCountRef.current || 0) + 1;
     guestAnalysisCountRef.current = next;
     if (typeof localStorage !== "undefined") localStorage.setItem(GUEST_COUNT_KEY, String(next));
-    if (next === GUEST_ANALYSIS_LIMIT && !guestGateDismissedInStorage()) {
+    if (next === GUEST_ANALYSIS_LIMIT) {
       setShowGuestGateModal(true);
     }
   }, [effectiveGuest]);
@@ -589,17 +575,6 @@ function HomeContent() {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    // Use max of ref and localStorage so we never undercount (e.g. after remount)
-    const stored = getStoredGuestCount();
-    const fromRef = guestAnalysisCountRef.current ?? 0;
-    const guestCount = effectiveGuest ? Math.max(fromRef, stored) : 0;
-    if (effectiveGuest && guestCount >= GUEST_ANALYSIS_LIMIT && !guestGateDismissedInStorage()) {
-      e.target.value = "";
-      setLoading(false);
-      setRecommendLoading(false);
-      setShowGuestGateModal(true);
-      return;
-    }
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(URL.createObjectURL(file));
     setResult(null);
@@ -682,9 +657,13 @@ function HomeContent() {
 
   const handlePaywallSuccess = useCallback(() => {
     closePaywallModal();
+    if (paywallVoluntary) {
+      void refreshAuthSession();
+      return;
+    }
     const dataUrl = analysisImageDataUrlRef.current;
     if (dataUrl) runAnalyzeWithDataUrl(dataUrl);
-  }, [closePaywallModal, runAnalyzeWithDataUrl]);
+  }, [closePaywallModal, paywallVoluntary, refreshAuthSession, runAnalyzeWithDataUrl]);
 
   // Save to Supabase when we have analysis + recommendation and user is logged in (once per item).
   // Key is by item_label only so changing recommendation (Other options) updates via PATCH, doesn't create a second item.
@@ -714,7 +693,17 @@ function HomeContent() {
         } else {
           savedItemBucketChangeCountRef.current = 0;
         }
-        refreshAuthSession().catch(() => {});
+        refreshAuthSession()
+          .then((snap) => {
+            if (
+              snap.itemCount === 9 &&
+              snap.isPro !== true &&
+              !freePlanNudgeDismissedThisSessionRef.current
+            ) {
+              setShowFreePlanNudge(true);
+            }
+          })
+          .catch(() => {});
       })
       .catch((err) => console.error('[shed] save item failed:', err));
   }, [result, recommendResult, isLoggedIn, refreshAuthSession]);
@@ -1052,82 +1041,6 @@ function HomeContent() {
   return (
     <main style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '48px 24px' }}>
       <div style={{ width: '100%', maxWidth: '390px' }}>
-        {!sessionLoading &&
-          isLoggedIn === true &&
-          typeof savedItemCount === "number" &&
-          savedItemCount >= UPGRADE_NUDGE_AT_ITEM_COUNT &&
-          savedItemCount < FREE_LOGGED_IN_ITEM_LIMIT &&
-          !upgradeMidTierNudgeDismissed && (
-          <div
-            role="status"
-            style={{
-              marginBottom: 16,
-              padding: "12px 14px",
-              background: "var(--surface)",
-              border: "1px solid var(--soft)",
-              borderRadius: 12,
-              position: "relative",
-              paddingRight: 36,
-            }}
-          >
-            <p style={{ margin: 0, fontSize: 13, color: "var(--ink)", lineHeight: 1.5 }}>
-              You&apos;ve saved {savedItemCount} of your {FREE_LOGGED_IN_ITEM_LIMIT} free items
-              {savedItemCount === UPGRADE_NUDGE_AT_ITEM_COUNT ? " — nice momentum." : "."}
-            </p>
-            <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.45 }}>
-              {MOMENT_COPY.upgradeNudgeSubtext}
-            </p>
-            <p style={{ margin: "10px 0 0", fontSize: 12 }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setPaywallVoluntary(true);
-                  setShowPaywallModal(true);
-                }}
-                style={{
-                  background: "none",
-                  border: "none",
-                  padding: 0,
-                  margin: 0,
-                  cursor: "pointer",
-                  color: "var(--accent)",
-                  fontFamily: "inherit",
-                  fontSize: 12,
-                  textDecoration: "underline",
-                }}
-              >
-                Upgrade ✦
-              </button>
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                try {
-                  localStorage.setItem(UPGRADE_NUDGE_DISMISSED_KEY, "1");
-                } catch {
-                  /* ignore */
-                }
-                setUpgradeMidTierNudgeDismissed(true);
-              }}
-              aria-label="Dismiss"
-              style={{
-                position: "absolute",
-                top: 10,
-                right: 10,
-                background: "none",
-                border: "none",
-                fontSize: 16,
-                cursor: "pointer",
-                color: "var(--ink-soft)",
-                lineHeight: 1,
-                padding: 0,
-              }}
-            >
-              ×
-            </button>
-          </div>
-        )}
-
         {/* Header — z-index keeps controls above in-page layers; Sign in uses router.push so navigation isn’t lost to overlays/prefetch edge cases */}
         <div
           style={{
@@ -1221,7 +1134,7 @@ function HomeContent() {
           )}
         </div>
 
-        {/* Tagline + pills when logged out; free-tier line always so signed-in users still see pricing */}
+        {/* Tagline + pills when logged out */}
         <div style={{ marginTop: '28px', textAlign: 'center' }}>
           {isLoggedIn === false ? (
             <>
@@ -1252,32 +1165,7 @@ function HomeContent() {
             <p style={{ fontSize: '12px', color: 'var(--ink-soft)', marginTop: '14px', marginBottom: 0 }}>
               No account needed to try
             </p>
-          ) : (
-            <p style={{ fontSize: '12px', color: 'var(--ink-soft)', marginTop: '14px', marginBottom: 0 }}>
-              Your plan: first {FREE_LOGGED_IN_ITEM_LIMIT} items free
-            </p>
-          )}
-          <p
-            style={{
-              fontSize: '12px',
-              color: 'var(--ink-soft)',
-              marginTop: '8px',
-              marginBottom: 0,
-              fontStyle: 'italic',
-              lineHeight: 1.45,
-            }}
-          >
-            {isLoggedIn === true &&
-            typeof savedItemCount === 'number' &&
-            savedItemCount > 0 &&
-            savedItemCount < FREE_LOGGED_IN_ITEM_LIMIT ? (
-              <>
-                {savedItemCount} of {FREE_LOGGED_IN_ITEM_LIMIT} free items used — upgrade anytime.
-              </>
-            ) : (
-              <>Free for your first {FREE_LOGGED_IN_ITEM_LIMIT} items. Upgrade anytime.</>
-            )}
-          </p>
+          ) : null}
         </div>
 
         {/* Loading state: minimal, centered under image */}
@@ -1718,6 +1606,94 @@ function HomeContent() {
         voluntary={paywallVoluntary}
         beforeGuestPurchase={waitForAiConsentBeforeGuestPurchase}
       />
+      {showFreePlanNudge && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="free-plan-nudge-title"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 51,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 24,
+            background: "rgba(0,0,0,0.5)",
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              freePlanNudgeDismissedThisSessionRef.current = true;
+              setShowFreePlanNudge(false);
+            }
+          }}
+        >
+          <div
+            style={{
+              background: "var(--white)",
+              borderRadius: 18,
+              padding: 28,
+              maxWidth: 380,
+              width: "100%",
+              boxShadow: "0 8px 32px rgba(44,36,22,0.15)",
+              fontFamily: "var(--font-body)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="free-plan-nudge-title" style={{ fontFamily: "var(--font-cormorant)", fontSize: "22px", fontWeight: 600, color: "var(--ink)", marginTop: 0, marginBottom: 12 }}>
+              One item left on your free plan.
+            </h2>
+            <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.5, marginBottom: 24 }}>
+              Upgrade to keep going — plans start at $2.99/month.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  freePlanNudgeDismissedThisSessionRef.current = true;
+                  setShowFreePlanNudge(false);
+                  setPaywallVoluntary(true);
+                  setShowPaywallModal(true);
+                }}
+                style={{
+                  width: "100%",
+                  padding: "14px 20px",
+                  background: "var(--ink)",
+                  color: "var(--white)",
+                  border: "none",
+                  borderRadius: 12,
+                  fontSize: 16,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                Upgrade now
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  freePlanNudgeDismissedThisSessionRef.current = true;
+                  setShowFreePlanNudge(false);
+                }}
+                style={{
+                  width: "100%",
+                  padding: "14px 20px",
+                  background: "transparent",
+                  color: "var(--ink-soft)",
+                  border: "1px solid var(--surface2)",
+                  borderRadius: 12,
+                  fontSize: 16,
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                Not now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <ShedSignupModal open={shedSignupModalOpen} onClose={() => setShedSignupModalOpen(false)} />
       {showGuestGateModal && (
         <div
@@ -1736,7 +1712,6 @@ function HomeContent() {
           }}
           onClick={(e) => {
             if (e.target === e.currentTarget) {
-              markGuestGateDismissed();
               setShowGuestGateModal(false);
             }
           }}
@@ -1756,11 +1731,8 @@ function HomeContent() {
             <h2 id="guest-gate-title" style={{ fontFamily: "var(--font-cormorant)", fontSize: "22px", fontWeight: 600, color: "var(--ink)", marginTop: 0, marginBottom: 12 }}>
               Keep your shed.
             </h2>
-            <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.5, marginBottom: 8 }}>
+            <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.5, marginBottom: 24 }}>
               {MOMENT_COPY.guestGateBody}
-            </p>
-            <p style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.45, marginBottom: 24, opacity: 0.92 }}>
-              {MOMENT_COPY.guestGateSubtext}
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <Link
@@ -1787,10 +1759,7 @@ function HomeContent() {
               </Link>
               <button
                 type="button"
-                onClick={() => {
-                  markGuestGateDismissed();
-                  setShowGuestGateModal(false);
-                }}
+                onClick={() => setShowGuestGateModal(false)}
                 style={{
                   width: "100%",
                   padding: "14px 20px",

@@ -1,4 +1,5 @@
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { hasProEntitlement } from "@/lib/revenuecat";
 import { NextResponse } from "next/server";
 
 /**
@@ -10,10 +11,10 @@ export async function GET() {
   const supabase = await createSupabaseServerClient();
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error) {
-    return NextResponse.json({ user: null, itemCount: null, code: null, welcomeSent: null });
+    return NextResponse.json({ user: null, itemCount: null, isPro: false, code: null, welcomeSent: null });
   }
   if (!user) {
-    return NextResponse.json({ user: null, itemCount: null, code: null, welcomeSent: null });
+    return NextResponse.json({ user: null, itemCount: null, isPro: false, code: null, welcomeSent: null });
   }
 
   const { count, error: countError } = await supabase
@@ -23,6 +24,7 @@ export async function GET() {
     .eq("hidden", false);
 
   const itemCount = !countError && count !== null ? count : 0;
+  const isPro = await hasProEntitlement(user.id);
 
   let code: string | null = null;
   let welcomeSent = true;
@@ -39,5 +41,5 @@ export async function GET() {
     welcomeSent = profile.welcome_sent === true;
   }
 
-  return NextResponse.json({ user, itemCount, code, welcomeSent });
+  return NextResponse.json({ user, itemCount, isPro, code, welcomeSent });
 }

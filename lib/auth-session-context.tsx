@@ -21,6 +21,8 @@ export type AuthSessionUser = {
 export type AuthSessionSnapshot = {
   user: AuthSessionUser | null;
   itemCount: number | null;
+  /** True when RevenueCat reports an active GoShed Pro entitlement. */
+  isPro: boolean;
   /** public.users.code — short beta / access code when set */
   code: string | null;
   /** public.users.welcome_sent — false until password onboarding completed or skipped */
@@ -40,6 +42,7 @@ function parseSessionJson(data: Record<string, unknown>): AuthSessionSnapshot {
   const user = (data.user as AuthSessionUser | null | undefined) ?? null;
   const itemCount =
     typeof data.itemCount === "number" && Number.isFinite(data.itemCount) ? data.itemCount : null;
+  const isPro = data.isPro === true;
   const rawCode = data.code;
   const code =
     rawCode === undefined || rawCode === null
@@ -49,12 +52,13 @@ function parseSessionJson(data: Record<string, unknown>): AuthSessionSnapshot {
         : String(rawCode);
   const welcomeSent =
     user === null ? true : data.welcomeSent === false ? false : true;
-  return { user, itemCount, code, welcomeSent };
+  return { user, itemCount, isPro, code, welcomeSent };
 }
 
 export function AuthSessionProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthSessionUser | null>(null);
   const [itemCount, setItemCount] = useState<number | null>(null);
+  const [isPro, setIsPro] = useState(false);
   const [code, setCode] = useState<string | null>(null);
   const [welcomeSent, setWelcomeSent] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -66,6 +70,7 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
     const snap = parseSessionJson(data);
     setUser(snap.user);
     setItemCount(snap.itemCount);
+    setIsPro(snap.isPro);
     setCode(snap.code);
     setWelcomeSent(snap.welcomeSent);
     return snap;
@@ -100,12 +105,13 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       itemCount,
+      isPro,
       code,
       welcomeSent,
       loading,
       refresh,
     }),
-    [user, itemCount, code, welcomeSent, loading, refresh]
+    [user, itemCount, isPro, code, welcomeSent, loading, refresh]
   );
 
   return <AuthSessionContext.Provider value={value}>{children}</AuthSessionContext.Provider>;
