@@ -1815,13 +1815,8 @@ function HomeContent() {
             <h2 style={{ fontFamily: "var(--font-cormorant)", fontSize: "22px", fontWeight: 600, color: "var(--ink)", marginBottom: "12px" }}>
               A note about AI
             </h2>
-            <p style={{ fontSize: "14px", color: "var(--ink-soft)", lineHeight: 1.6, marginBottom: "12px" }}>
+            <p style={{ fontSize: "14px", color: "var(--ink-soft)", lineHeight: 1.6, marginBottom: "20px" }}>
               GoShed uses AI to analyze your photos and suggest what to do with your items. Photos are sent to <strong style={{ color: "var(--ink)" }}>Anthropic (Claude)</strong> to generate recommendations. We don&apos;t use your data for advertising or share it with anyone else.
-            </p>
-            <p style={{ fontSize: "13px", color: "var(--ink-soft)", lineHeight: 1.55, marginBottom: "20px" }}>
-              <em style={{ fontStyle: "italic", color: "var(--ink-soft)" }}>
-                GoShed uses your camera to photograph items and help you decide what to do with them. After you tap Got it, iOS may ask for camera access—only if you want to snap photos here.
-              </em>
             </p>
             <button
               type="button"
