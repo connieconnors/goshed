@@ -14,6 +14,11 @@ import {
   type ConsignmentPlaceRow,
 } from '@/lib/fetchConsignmentPlacesClient';
 import { MOMENT_COPY } from '@/lib/momentCopy';
+import {
+  FREE_LOGGED_IN_ITEM_LIMIT,
+  GUEST_ANALYSIS_LIMIT,
+  UPGRADE_NUDGE_AT_ITEM_COUNT,
+} from '@/lib/freeTier';
 import { guestGateDismissedInStorage, markGuestGateDismissed } from '@/lib/guestGateStorage';
 
 type AnalyzeResult = {
@@ -215,23 +220,23 @@ function HomeContent() {
   const [mounted, setMounted] = useState(false);
   const [contextualPlaces, setContextualPlaces] = useState<{ name: string; distance_mi: number; place_id: string }[]>([]);
   const [pickupDonationPlaces, setPickupDonationPlaces] = useState<{ name: string; distance_mi: number; place_id: string }[]>([]);
+  /** True after donate-flow geolocation + contextual-places request finishes (avoids flashing empty-state while loading). */
+  const [donationPlacesFetchDone, setDonationPlacesFetchDone] = useState(false);
   const [rainNext24h, setRainNext24h] = useState<boolean | null>(null);
   const [showPaywallModal, setShowPaywallModal] = useState(false);
   /** True when opened from footer Upgrade (voluntary title); false for item-limit / ?paywall=1. */
   const [paywallVoluntary, setPaywallVoluntary] = useState(false);
-  const [paywallItemCount, setPaywallItemCount] = useState(20);
+  const [paywallItemCount, setPaywallItemCount] = useState(FREE_LOGGED_IN_ITEM_LIMIT);
   const [showAiConsent, setShowAiConsent] = useState(false);
   /** Resolves when user accepts AI note during Upgrade guest → purchase (see `waitForAiConsentBeforeGuestPurchase`). */
   const aiConsentGuestPurchaseResolverRef = useRef<(() => void) | null>(null);
   /**
    * True once the user accepts the AI sheet this tab session (set synchronously with localStorage).
-   * Upgrade signup clears `goshed_ai_consent` but must not re-show the sheet in `beforeGuestPurchase`.
+   * Upgrade signup keeps `goshed_ai_consent` so the home sheet does not return after account creation.
    */
   const aiConsentAgreedThisSessionRef = useRef(false);
   const [showGuestGateModal, setShowGuestGateModal] = useState(false);
   const [shedSignupModalOpen, setShedSignupModalOpen] = useState(false);
-  /** Guest limit: completed flows (analyze + initial recommendation), not uploads alone. */
-  const GUEST_ANALYSIS_LIMIT = 10;
   const GUEST_COUNT_KEY = "goshed_guest_analysis_count";
   const getStoredGuestCount = (): number => {
     if (typeof localStorage === "undefined") return 0;
@@ -240,10 +245,22 @@ function HomeContent() {
     return Number.isFinite(n) ? n : 0;
   };
   const guestAnalysisCountRef = useRef(getStoredGuestCount());
-  const [item19NudgeDismissed, setItem19NudgeDismissed] = useState(false);
+  const UPGRADE_NUDGE_DISMISSED_KEY = "goshed_upgrade_mid_nudge_dismissed";
+  const [upgradeMidTierNudgeDismissed, setUpgradeMidTierNudgeDismissed] = useState(false);
   /** Force guest-mode limit from URL (e.g. ?guest=1). Set in useEffect to avoid hydration mismatch. */
   const [forceGuestMode, setForceGuestMode] = useState(false);
   const effectiveGuest = (isLoggedIn !== true) || forceGuestMode;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      if (localStorage.getItem(UPGRADE_NUDGE_DISMISSED_KEY) === "1") {
+        setUpgradeMidTierNudgeDismissed(true);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   useEffect(() => {
     if (chosenDecision == null || chosenDecision !== 'sell') {
@@ -346,21 +363,29 @@ function HomeContent() {
     return () => { if (refinementPhotoUrl) URL.revokeObjectURL(refinementPhotoUrl); };
   }, [refinementPhotoUrl]);
 
-  // Fetch nearby donation places only when user chooses Donate (not Gift)
+  // Donate: browser geolocation + POST /api/contextual-places (no login). Separate from Sell/consignment GET.
   useEffect(() => {
     if (chosenDecision !== 'donate') {
       setContextualPlaces([]);
       setPickupDonationPlaces([]);
+      setDonationPlacesFetchDone(false);
       return;
     }
-    if (!navigator.geolocation) return;
+    setDonationPlacesFetchDone(false);
+    if (!navigator.geolocation) {
+      setContextualPlaces([]);
+      setPickupDonationPlaces([]);
+      setDonationPlacesFetchDone(true);
+      return;
+    }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
-        fetch('/api/contextual-places', {
+        void fetch('/api/contextual-places', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({
             lat,
             lng,
@@ -382,11 +407,15 @@ function HomeContent() {
           .catch(() => {
             setContextualPlaces([]);
             setPickupDonationPlaces([]);
+          })
+          .finally(() => {
+            setDonationPlacesFetchDone(true);
           });
       },
       () => {
         setContextualPlaces([]);
         setPickupDonationPlaces([]);
+        setDonationPlacesFetchDone(true);
       }
     );
   }, [chosenDecision, result?.item_label, result?.description, result?.value_range]);
@@ -422,6 +451,16 @@ function HomeContent() {
   const handleZoneClick = () => inputRef.current?.click();
 
   const handleAiConsentAccept = async () => {
+    if (typeof window !== "undefined") {
+      try {
+        const bridge = (
+          window as Window & { ReactNativeWebView?: { postMessage: (data: string) => void } }
+        ).ReactNativeWebView;
+        bridge?.postMessage("goshed-native-ai-consent-accepted");
+      } catch {
+        /* not running inside the native WebView shell */
+      }
+    }
     aiConsentAgreedThisSessionRef.current = true;
     localStorage.setItem("goshed_ai_consent", "1");
     try {
@@ -483,7 +522,7 @@ function HomeContent() {
       }
       if (res.status === 402) {
         setPaywallVoluntary(false);
-        setPaywallItemCount(typeof data.itemCount === 'number' ? data.itemCount : 20);
+        setPaywallItemCount(typeof data.itemCount === 'number' ? data.itemCount : FREE_LOGGED_IN_ITEM_LIMIT);
         setShowPaywallModal(true);
         setLoading(false);
         return;
@@ -598,12 +637,11 @@ function HomeContent() {
     }
   };
 
-  /** After confirming a decision: clear the flow and open the device camera (capture) immediately. */
+  /** After confirming a decision: clear the flow and return to the home upload zone. */
   const handleAddAnotherItem = () => {
     const cam = addAnotherCameraInputRef.current;
     if (cam) cam.value = '';
-    // Keep .click() in the same synchronous user gesture as the tap (iOS); state clears right after.
-    cam?.click();
+    if (inputRef.current) inputRef.current.value = '';
 
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(null);
@@ -812,7 +850,7 @@ function HomeContent() {
   };
 
   const handleHomeConsignmentLinkClick = async () => {
-    if (homeConsignmentLoading || homeConsignmentExpanded) return;
+    if (homeConsignmentLoading) return;
     setHomeConsignmentExpanded(true);
     setHomeConsignmentLoading(true);
     const places = await fetchConsignmentPlacesClient();
@@ -1014,7 +1052,12 @@ function HomeContent() {
   return (
     <main style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '48px 24px' }}>
       <div style={{ width: '100%', maxWidth: '390px' }}>
-        {isLoggedIn === true && savedItemCount === 19 && !item19NudgeDismissed && (
+        {!sessionLoading &&
+          isLoggedIn === true &&
+          typeof savedItemCount === "number" &&
+          savedItemCount >= UPGRADE_NUDGE_AT_ITEM_COUNT &&
+          savedItemCount < FREE_LOGGED_IN_ITEM_LIMIT &&
+          !upgradeMidTierNudgeDismissed && (
           <div
             role="status"
             style={{
@@ -1027,13 +1070,45 @@ function HomeContent() {
               paddingRight: 36,
             }}
           >
-            <p style={{ margin: 0, fontSize: 13, color: "var(--ink)", lineHeight: 1.5 }}>{MOMENT_COPY.item19Nudge}</p>
+            <p style={{ margin: 0, fontSize: 13, color: "var(--ink)", lineHeight: 1.5 }}>
+              You&apos;ve saved {savedItemCount} of your {FREE_LOGGED_IN_ITEM_LIMIT} free items
+              {savedItemCount === UPGRADE_NUDGE_AT_ITEM_COUNT ? " — nice momentum." : "."}
+            </p>
             <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.45 }}>
-              {MOMENT_COPY.item19NudgeSubtext}
+              {MOMENT_COPY.upgradeNudgeSubtext}
+            </p>
+            <p style={{ margin: "10px 0 0", fontSize: 12 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setPaywallVoluntary(true);
+                  setShowPaywallModal(true);
+                }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  margin: 0,
+                  cursor: "pointer",
+                  color: "var(--accent)",
+                  fontFamily: "inherit",
+                  fontSize: 12,
+                  textDecoration: "underline",
+                }}
+              >
+                Upgrade ✦
+              </button>
             </p>
             <button
               type="button"
-              onClick={() => setItem19NudgeDismissed(true)}
+              onClick={() => {
+                try {
+                  localStorage.setItem(UPGRADE_NUDGE_DISMISSED_KEY, "1");
+                } catch {
+                  /* ignore */
+                }
+                setUpgradeMidTierNudgeDismissed(true);
+              }}
               aria-label="Dismiss"
               style={{
                 position: "absolute",
@@ -1146,7 +1221,7 @@ function HomeContent() {
           )}
         </div>
 
-        {/* Logged-out only: tagline, example pills, no-account line */}
+        {/* Tagline + pills when logged out; free-tier line always so signed-in users still see pricing */}
         <div style={{ marginTop: '28px', textAlign: 'center' }}>
           {isLoggedIn === false ? (
             <>
@@ -1171,11 +1246,38 @@ function HomeContent() {
                   </span>
                 ))}
               </div>
-              <p style={{ fontSize: '12px', color: 'var(--ink-soft)', marginTop: '14px', marginBottom: 0 }}>
-                No account needed to try
-              </p>
             </>
           ) : null}
+          {isLoggedIn === false ? (
+            <p style={{ fontSize: '12px', color: 'var(--ink-soft)', marginTop: '14px', marginBottom: 0 }}>
+              No account needed to try
+            </p>
+          ) : (
+            <p style={{ fontSize: '12px', color: 'var(--ink-soft)', marginTop: '14px', marginBottom: 0 }}>
+              Your plan: first {FREE_LOGGED_IN_ITEM_LIMIT} items free
+            </p>
+          )}
+          <p
+            style={{
+              fontSize: '12px',
+              color: 'var(--ink-soft)',
+              marginTop: '8px',
+              marginBottom: 0,
+              fontStyle: 'italic',
+              lineHeight: 1.45,
+            }}
+          >
+            {isLoggedIn === true &&
+            typeof savedItemCount === 'number' &&
+            savedItemCount > 0 &&
+            savedItemCount < FREE_LOGGED_IN_ITEM_LIMIT ? (
+              <>
+                {savedItemCount} of {FREE_LOGGED_IN_ITEM_LIMIT} free items used — upgrade anytime.
+              </>
+            ) : (
+              <>Free for your first {FREE_LOGGED_IN_ITEM_LIMIT} items. Upgrade anytime.</>
+            )}
+          </p>
         </div>
 
         {/* Loading state: minimal, centered under image */}
@@ -1390,6 +1492,19 @@ function HomeContent() {
                           : 'No rain expected — good day to put it out.'}
                       </p>
                     )}
+                    {chosenDecision === "donate" && !donationPlacesFetchDone && (
+                      <p
+                        style={{
+                          fontSize: "13px",
+                          color: "var(--ink-soft)",
+                          lineHeight: 1.5,
+                          marginBottom: "12px",
+                          marginTop: 0,
+                        }}
+                      >
+                        Finding donation spots near you…
+                      </p>
+                    )}
                     {chosenDecision === 'donate' && contextualPlaces.length > 0 && (
                       <div style={{ marginBottom: '14px' }}>
                         <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ink)', marginBottom: '8px', marginTop: 0 }}>
@@ -1413,6 +1528,36 @@ function HomeContent() {
                         </ul>
                       </div>
                     )}
+                    {chosenDecision === 'donate' &&
+                      donationPlacesFetchDone &&
+                      contextualPlaces.length === 0 &&
+                      pickupDonationPlaces.length === 0 && (
+                        <p
+                          style={{
+                            fontSize: '12px',
+                            color: 'var(--ink-soft)',
+                            lineHeight: 1.45,
+                            marginBottom: '12px',
+                            marginTop: 0,
+                          }}
+                        >
+                          {process.env.NODE_ENV === 'development' ? (
+                            <>
+                              No nearby donation results. Allow location for this site, set{' '}
+                              <code style={{ fontSize: '11px' }}>GOOGLE_PLACES_API_KEY</code> in{' '}
+                              <code style={{ fontSize: '11px' }}>.env.local</code>, then restart{' '}
+                              <code style={{ fontSize: '11px' }}>npm run dev</code>. Use{' '}
+                              <code style={{ fontSize: '11px' }}>http://localhost</code> (not LAN IP) if the browser
+                              blocks geolocation.
+                            </>
+                          ) : (
+                            <>
+                              We couldn&apos;t load nearby donation ideas. Allow location for this site in your
+                              browser settings, then try confirming Donate again.
+                            </>
+                          )}
+                        </p>
+                      )}
                     {chosenDecision === 'donate' && pickupDonationPlaces.length > 0 && (
                       <div style={{ marginBottom: '14px' }}>
                         <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ink)', marginBottom: '6px', marginTop: 0 }}>
@@ -1439,7 +1584,7 @@ function HomeContent() {
                         </ul>
                       </div>
                     )}
-                    {chosenDecision === 'sell' && isLoggedIn === true && (
+                    {chosenDecision === 'sell' && (
                       <div style={{ marginBottom: '14px' }}>
                         <button
                           type="button"
@@ -1670,8 +1815,13 @@ function HomeContent() {
             <h2 style={{ fontFamily: "var(--font-cormorant)", fontSize: "22px", fontWeight: 600, color: "var(--ink)", marginBottom: "12px" }}>
               A note about AI
             </h2>
-            <p style={{ fontSize: "14px", color: "var(--ink-soft)", lineHeight: 1.6, marginBottom: "20px" }}>
+            <p style={{ fontSize: "14px", color: "var(--ink-soft)", lineHeight: 1.6, marginBottom: "12px" }}>
               GoShed uses AI to analyze your photos and suggest what to do with your items. Photos are sent to <strong style={{ color: "var(--ink)" }}>Anthropic (Claude)</strong> to generate recommendations. We don&apos;t use your data for advertising or share it with anyone else.
+            </p>
+            <p style={{ fontSize: "13px", color: "var(--ink-soft)", lineHeight: 1.55, marginBottom: "20px" }}>
+              <em style={{ fontStyle: "italic", color: "var(--ink-soft)" }}>
+                GoShed uses your camera to photograph items and help you decide what to do with them. After you tap Got it, iOS may ask for camera access—only if you want to snap photos here.
+              </em>
             </p>
             <button
               type="button"

@@ -1,0 +1,8 @@
+{
+  "android": {
+    "package": "com.anonymous.goshed"
+  },
+  "ios": {
+    "bundleIdentifier": "com.anonymous.goshed"
+  }
+}

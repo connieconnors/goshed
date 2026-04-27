@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 function haversineKm(
   lat1: number,
@@ -118,15 +117,7 @@ async function textSearch(
  * Returns at most **3** closest places that clearly signal consignment/resale in the name or address.
  */
 export async function GET(request: NextRequest) {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-  if (authError || !user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+  /** Public read: lat/lng + Places text search only (same idea as POST /api/contextual-places). Guests use this from the home Sell flow. */
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ places: [] as ConsignmentPlace[] });

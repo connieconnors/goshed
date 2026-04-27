@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { hasProEntitlement } from "@/lib/revenuecat";
+import { FREE_LOGGED_IN_ITEM_LIMIT } from "@/lib/freeTier";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-const PAYWALL_ITEM_LIMIT = 20;
+const PAYWALL_ITEM_LIMIT = FREE_LOGGED_IN_ITEM_LIMIT;
 
 type AnalyzeResult = {
   item_label: string;

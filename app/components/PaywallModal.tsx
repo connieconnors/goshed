@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { MOMENT_COPY } from "@/lib/momentCopy";
+import { FREE_LOGGED_IN_ITEM_LIMIT } from "@/lib/freeTier";
 import { useAuthSession } from "@/lib/auth-session-context";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
-import { Purchases } from "@revenuecat/purchases-js";
-import type { Package, Offerings } from "@revenuecat/purchases-js";
+import { PackageType, Purchases } from "@revenuecat/purchases-js";
+import type { Offering, Package, Offerings } from "@revenuecat/purchases-js";
 
 type PaywallModalProps = {
   open: boolean;
@@ -19,6 +20,20 @@ type PaywallModalProps = {
 };
 
 const API_KEY = process.env.NEXT_PUBLIC_REVENUECAT_API_KEY ?? "";
+
+/**
+ * RevenueCat only fills `offering.monthly` / `offering.annual` when packages use the
+ * standard $rc_monthly / $rc_annual identifiers. Custom package IDs still appear in
+ * `availablePackages` with the right PackageType — use this so checkout works either way.
+ */
+function resolveSubscriptionPackage(offering: Offering | null, plan: "monthly" | "annual"): Package | null {
+  if (!offering) return null;
+  const fromSlot = plan === "monthly" ? offering.monthly : offering.annual;
+  if (fromSlot) return fromSlot;
+  const want = plan === "monthly" ? PackageType.Monthly : PackageType.Annual;
+  const list = offering.availablePackages ?? [];
+  return list.find((p) => p.packageType === want) ?? null;
+}
 
 /** Plain-object summary for console debugging (RevenueCat SDK objects are not always JSON-serializable). */
 function summarizeOfferings(offerings: Offerings) {
@@ -40,7 +55,7 @@ export function PaywallModal({
   open,
   onClose,
   onPurchaseSuccess,
-  itemCount: _itemCount = 20,
+  itemCount: _itemCount = FREE_LOGGED_IN_ITEM_LIMIT,
   voluntary = false,
   beforeGuestPurchase,
 }: PaywallModalProps) {
@@ -71,9 +86,19 @@ export function PaywallModal({
   const [upgradeNudgeError, setUpgradeNudgeError] = useState<string | null>(null);
   const pendingUpgradePlanRef = useRef<"annual" | "monthly" | null>(null);
   const pendingUpgradeUserIdRef = useRef<string | null>(null);
+  /** Bumps to re-run RevenueCat offerings fetch (Try again). */
+  const [offeringsRetryNonce, setOfferingsRetryNonce] = useState(0);
+  /** User-visible reason when signed-in plans are missing or failed to load. */
+  const [plansIssueMessage, setPlansIssueMessage] = useState<string | null>(null);
   /** Last RevenueCat offerings summary or fetch outcome (for paywall disabled diagnostics). */
   const lastOfferingsSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const { refresh } = useAuthSession();
+
+  const retryPlansFetch = useCallback(() => {
+    setPlansIssueMessage(null);
+    setPurchaseError(null);
+    setOfferingsRetryNonce((n) => n + 1);
+  }, []);
 
   const ensureConfigured = useCallback(async (appUserId: string): Promise<boolean> => {
     if (!API_KEY) return false;
@@ -117,6 +142,8 @@ export function PaywallModal({
       setUpgradeNudgeError(null);
       pendingUpgradePlanRef.current = null;
       pendingUpgradeUserIdRef.current = null;
+      setOfferingsRetryNonce(0);
+      setPlansIssueMessage(null);
       return;
     }
 
@@ -136,6 +163,7 @@ export function PaywallModal({
       setMonthlyPackage(null);
       setYearlyPackage(null);
       setPurchaseError(null);
+      setPlansIssueMessage(null);
 
       const snap = await refresh();
       const uid = snap.user?.id ?? null;
@@ -150,7 +178,8 @@ export function PaywallModal({
 
       if (!API_KEY.trim()) {
         lastOfferingsSnapshotRef.current = { reason: "missing_NEXT_PUBLIC_REVENUECAT_API_KEY" };
-        console.warn("[PaywallModal] RevenueCat disabled:", lastOfferingsSnapshotRef.current);
+        console.warn("[PaywallModal] Billing key missing — set NEXT_PUBLIC_REVENUECAT_API_KEY", lastOfferingsSnapshotRef.current);
+        setPlansIssueMessage("Subscription options aren’t available in this version of the app. Try again later or use “Have a code?” below.");
         finish();
         return;
       }
@@ -160,6 +189,7 @@ export function PaywallModal({
       if (!ok) {
         lastOfferingsSnapshotRef.current = { reason: "Purchases.configure_or_changeUser_failed" };
         console.warn("[PaywallModal] RevenueCat configure failed:", lastOfferingsSnapshotRef.current);
+        setPlansIssueMessage("Couldn’t connect to billing. Check your connection and tap Try again.");
         finish();
         return;
       }
@@ -174,6 +204,7 @@ export function PaywallModal({
         console.warn("[PaywallModal] RevenueCat getOfferings timed out:", lastOfferingsSnapshotRef.current);
         setMonthlyPackage(null);
         setYearlyPackage(null);
+        setPlansIssueMessage("Loading plans took too long. Check your connection, then tap Try again.");
         finish();
       }, OFFERINGS_TIMEOUT_MS);
 
@@ -183,8 +214,8 @@ export function PaywallModal({
         clearTimeout(timeoutId);
         if (cancelled) return;
         const current = offerings.current;
-        const monthly = current?.monthly ?? null;
-        const yearly = current?.annual ?? null;
+        const monthly = resolveSubscriptionPackage(current, "monthly");
+        const yearly = resolveSubscriptionPackage(current, "annual");
         const summary = summarizeOfferings(offerings);
         lastOfferingsSnapshotRef.current = {
           source: "getOfferings_ok",
@@ -195,6 +226,14 @@ export function PaywallModal({
         console.log("[PaywallModal] RevenueCat getOfferings:", lastOfferingsSnapshotRef.current);
         setMonthlyPackage(monthly);
         setYearlyPackage(yearly);
+        if (!monthly && !yearly) {
+          console.warn("[PaywallModal] No monthly/annual package on current offering — check RC dashboard package types ($rc_monthly / $rc_annual or matching types).", summary);
+          setPlansIssueMessage(
+            "We couldn’t load subscription plans. Tap Try again, or use “Have a code?” if you have one."
+          );
+        } else {
+          setPlansIssueMessage(null);
+        }
       } catch (err: unknown) {
         clearTimeout(timeoutId);
         if (cancelled) return;
@@ -203,9 +242,12 @@ export function PaywallModal({
           source: "getOfferings_throw",
           errorMessage: message,
         };
-        console.warn("[PaywallModal] RevenueCat getOfferings failed:", lastOfferingsSnapshotRef.current, err);
+        console.warn("[PaywallModal] getOfferings failed:", lastOfferingsSnapshotRef.current, err);
         setMonthlyPackage(null);
         setYearlyPackage(null);
+        setPlansIssueMessage(
+          "We couldn’t load subscription options. Check your connection, tap Try again, or use “Have a code?” below."
+        );
       } finally {
         if (!cancelled) clearTimeout(timeoutId);
         finish();
@@ -216,7 +258,7 @@ export function PaywallModal({
     return () => {
       cancelled = true;
     };
-  }, [open, ensureConfigured, refresh]);
+  }, [open, ensureConfigured, refresh, offeringsRetryNonce]);
 
   const handlePurchase = useCallback(
     async (pkg: Package | null) => {
@@ -291,7 +333,7 @@ export function PaywallModal({
 
       if (created) {
         try {
-          localStorage.removeItem("goshed_ai_consent");
+          localStorage.setItem("goshed_ai_consent", "1");
         } catch {
           /* ignore */
         }
@@ -356,7 +398,7 @@ export function PaywallModal({
       await beforeGuestPurchase?.();
 
       if (!API_KEY.trim()) {
-        setUpgradeNudgeError("Subscriptions are not available in this build.");
+        setUpgradeNudgeError("Subscription checkout isn’t available in this version. Try again later.");
         return;
       }
 
@@ -375,17 +417,23 @@ export function PaywallModal({
         return;
       }
 
+      const curOffering = offerings.current;
       const pkg =
-        plan === "annual" ? (offerings.current?.annual ?? null) : (offerings.current?.monthly ?? null);
+        plan === "annual"
+          ? resolveSubscriptionPackage(curOffering, "annual")
+          : resolveSubscriptionPackage(curOffering, "monthly");
       if (!pkg) {
-        setUpgradeNudgeError("That plan is not available right now. Try again.");
+        console.warn("[PaywallModal] Post–nudge checkout: no package for plan", plan, summarizeOfferings(offerings));
+        setUpgradeNudgeError(
+          "That plan couldn’t be loaded. Close this window and tap Try again on the subscription screen."
+        );
         return;
       }
 
       pendingUpgradePlanRef.current = null;
       pendingUpgradeUserIdRef.current = null;
-      setMonthlyPackage(offerings.current?.monthly ?? null);
-      setYearlyPackage(offerings.current?.annual ?? null);
+      setMonthlyPackage(resolveSubscriptionPackage(curOffering, "monthly"));
+      setYearlyPackage(resolveSubscriptionPackage(curOffering, "annual"));
       setUpgradeNudgeModalOpen(false);
       await handlePurchase(pkg);
     } finally {
@@ -470,6 +518,8 @@ export function PaywallModal({
 
   const yearDisabled = purchasing || !yearlyPackage;
   const monthDisabled = purchasing || !monthlyPackage;
+  const signedInPlansMissing =
+    signedIn && showPurchaseRow && !purchasing && !yearlyPackage && !monthlyPackage;
 
   return (
     <div
@@ -553,40 +603,72 @@ export function PaywallModal({
 
         {showPurchaseRow ? (
           <>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <button
-                type="button"
-                disabled={signedIn ? yearDisabled : false}
-                onClick={onYearClick}
-                className="goshed-primary-btn"
+            {signedInPlansMissing ? (
+              <div
                 style={{
-                  width: "100%",
-                  justifyContent: "center",
-                  padding: "14px 20px",
-                  cursor: signedIn && yearDisabled ? "not-allowed" : "pointer",
-                }}
-              >
-                {purchasing ? "Processing…" : "Get the year — $24.99"}
-              </button>
-              <button
-                type="button"
-                disabled={signedIn ? monthDisabled : false}
-                onClick={onMonthClick}
-                style={{
-                  width: "100%",
-                  padding: "14px 20px",
-                  background: "transparent",
-                  color: "var(--ink)",
-                  border: "1px solid var(--surface2)",
+                  marginBottom: 16,
+                  padding: "14px 14px",
                   borderRadius: 12,
-                  fontSize: 16,
-                  cursor: signedIn && monthDisabled ? "not-allowed" : "pointer",
-                  fontFamily: "inherit",
+                  border: "1px solid var(--surface2)",
+                  background: "var(--surface1, #f8fafc)",
                 }}
               >
-                {purchasing ? "Processing…" : "Continue — $2.99/month"}
-              </button>
-            </div>
+                <p style={{ margin: "0 0 12px", fontSize: 14, color: "var(--ink)", lineHeight: 1.5 }}>
+                  {plansIssueMessage ??
+                    "We couldn’t load subscription options. Check your connection and tap Try again."}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => retryPlansFetch()}
+                  className="goshed-primary-btn"
+                  style={{
+                    width: "100%",
+                    justifyContent: "center",
+                    padding: "12px 16px",
+                    fontSize: 15,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Try again
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <button
+                  type="button"
+                  disabled={signedIn ? yearDisabled : false}
+                  onClick={onYearClick}
+                  className="goshed-primary-btn"
+                  style={{
+                    width: "100%",
+                    justifyContent: "center",
+                    padding: "14px 20px",
+                    cursor: signedIn && yearDisabled ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {purchasing ? "Processing…" : "Get the year — $24.99"}
+                </button>
+                <button
+                  type="button"
+                  disabled={signedIn ? monthDisabled : false}
+                  onClick={onMonthClick}
+                  style={{
+                    width: "100%",
+                    padding: "14px 20px",
+                    background: "transparent",
+                    color: "var(--ink)",
+                    border: "1px solid var(--surface2)",
+                    borderRadius: 12,
+                    fontSize: 16,
+                    cursor: signedIn && monthDisabled ? "not-allowed" : "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {purchasing ? "Processing…" : "Continue — $2.99/month"}
+                </button>
+              </div>
+            )}
             <p style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 8, textAlign: "center", lineHeight: 1.5 }}>
               Cancel anytime.
             </p>
@@ -921,7 +1003,7 @@ export function PaywallModal({
                 }}
               />
               <span style={{ fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.45 }}>
-                Check the box for an occasional nudge to keep clearing your shed.
+                {MOMENT_COPY.notificationNudgeCheckboxLabel}
               </span>
             </label>
             {upgradeNudgeError ? (
