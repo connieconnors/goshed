@@ -232,7 +232,7 @@ export function ShedSignupModal({ open, onClose }: Props) {
               Create a free account
             </h2>
             <p style={{ fontSize: 14, color: "var(--ink-soft)", lineHeight: 1.5, marginBottom: 20 }}>
-              Save your progress and view everything you&apos;ve cleared in your Shed.
+              Start your free shed.
             </p>
             <label
               htmlFor="shed-signup-notify-consent"

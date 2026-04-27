@@ -355,7 +355,6 @@ export function PaywallModal({
       setGuestConfirmPassword("");
       setGuestPendingPlan(null);
 
-      setUpgradeNudgeConsentChecked(false);
       setUpgradeNudgeError(null);
       setUpgradeNudgeModalOpen(true);
     } finally {
@@ -499,6 +498,7 @@ export function PaywallModal({
       setGuestPendingPlan("annual");
       setGuestSignupOpen(true);
       setGuestSignupError(null);
+      setUpgradeNudgeConsentChecked(false);
       setGuestConfirmPassword("");
       return;
     }
@@ -510,6 +510,7 @@ export function PaywallModal({
       setGuestPendingPlan("monthly");
       setGuestSignupOpen(true);
       setGuestSignupError(null);
+      setUpgradeNudgeConsentChecked(false);
       setGuestConfirmPassword("");
       return;
     }
@@ -850,6 +851,37 @@ export function PaywallModal({
                 boxSizing: "border-box",
               }}
             />
+            <label
+              htmlFor="guest-signup-nudge-consent"
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 8,
+                marginBottom: 14,
+                cursor: guestSignupSubmitting ? "not-allowed" : "pointer",
+              }}
+            >
+              <input
+                id="guest-signup-nudge-consent"
+                type="checkbox"
+                checked={upgradeNudgeConsentChecked}
+                onChange={(e) => {
+                  setUpgradeNudgeConsentChecked(e.target.checked);
+                  setGuestSignupError(null);
+                }}
+                disabled={guestSignupSubmitting}
+                style={{
+                  marginTop: 2,
+                  width: 14,
+                  height: 14,
+                  accentColor: "var(--ink)",
+                  cursor: guestSignupSubmitting ? "not-allowed" : "pointer",
+                }}
+              />
+              <span style={{ fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.45 }}>
+                Email me occasionally — I declutter better with a nudge
+              </span>
+            </label>
             {guestSignupError ? (
               <div style={{ marginBottom: 14 }}>
                 <p style={{ color: "#c00", fontSize: 13, margin: "0 0 10px", lineHeight: 1.45 }}>

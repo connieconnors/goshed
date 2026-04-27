@@ -1741,9 +1741,8 @@ function HomeContent() {
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <Link
-                href="/login"
+                href="/set-password"
                 onClick={() => {
-                  if (typeof sessionStorage !== "undefined") sessionStorage.setItem("redirect_after_login", "/");
                   setShowGuestGateModal(false);
                 }}
                 style={{
