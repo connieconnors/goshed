@@ -210,9 +210,11 @@ function HomeContent() {
     refresh: refreshAuthSession,
     loading: sessionLoading,
     user: authUser,
+    isPro,
     welcomeSent,
   } = useAuthSession();
   const isLoggedIn = sessionLoading ? null : !!authUser;
+  const showFreePlanHomeCopy = !sessionLoading && (isLoggedIn === false || (isLoggedIn === true && !isPro));
   const [decisionJustConfirmed, setDecisionJustConfirmed] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [contextualPlaces, setContextualPlaces] = useState<{ name: string; distance_mi: number; place_id: string }[]>([]);
@@ -1161,7 +1163,7 @@ function HomeContent() {
               </div>
             </>
           ) : null}
-          {isLoggedIn === false ? (
+          {showFreePlanHomeCopy ? (
             <>
               <p style={{ fontSize: '12px', color: 'var(--ink-soft)', marginTop: '14px', marginBottom: 0 }}>
                 No account needed to try
