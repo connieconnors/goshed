@@ -1,4 +1,4 @@
-package com.anonymous.goshed
+package com.thriftshopperinc.goshed
 
 import android.os.Build
 import android.os.Bundle

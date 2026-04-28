@@ -27,7 +27,7 @@
       <dict>
         <key>CFBundleURLSchemes</key>
         <array>
-          <string>com.anonymous.goshed</string>
+          <string>com.thriftshopperinc.goshed</string>
         </array>
       </dict>
     </array>

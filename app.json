@@ -1,8 +1,33 @@
 {
-  "android": {
-    "package": "com.anonymous.goshed"
-  },
-  "ios": {
-    "bundleIdentifier": "com.anonymous.goshed"
+  "expo": {
+    "name": "goshed",
+    "slug": "goshed",
+    "version": "0.1.0",
+    "newArchEnabled": true,
+    "userInterfaceStyle": "light",
+    "icon": "./public/app-store-icon-1024.png",
+    "ios": {
+      "bundleIdentifier": "com.thriftshopperinc.goshed",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "GoShed uses your camera to photograph items so we can suggest what to do with them, like donate, sell, or gift.",
+        "NSPhotoLibraryUsageDescription": "GoShed can use photos you pick from your library to identify items and suggest next steps.",
+        "NSLocationWhenInUseUsageDescription": "GoShed uses your general area to suggest nearby donation drop-offs and pickup options when you choose Donate.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": false,
+          "NSAllowsLocalNetworking": true
+        }
+      }
+    },
+    "android": {
+      "package": "com.thriftshopperinc.goshed",
+      "versionCode": 1,
+      "permissions": [
+        "CAMERA"
+      ]
+    },
+    "web": {
+      "favicon": "./public/goshed-favicon-light.png"
+    }
   }
 }
