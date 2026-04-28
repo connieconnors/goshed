@@ -102,11 +102,26 @@ export default function AccountPage() {
     setRestoreMessage(null);
     try {
       const { Purchases } = await import("@revenuecat/purchases-js");
+      if (!Purchases.isConfigured()) {
+        setRestoreMessage({
+          type: "error",
+          text: "Billing isn’t active in this browser yet. Open Upgrade from the app, then try again here.",
+        });
+        return;
+      }
       const purchases = Purchases.getSharedInstance();
       await purchases.getCustomerInfo();
-      setRestoreMessage({ type: "success", text: "Purchases restored successfully." });
+      const snap = await refreshAuthSession();
+      if (snap.isPro) {
+        setRestoreMessage({ type: "success", text: "GoShed Pro is active on this account." });
+      } else {
+        setRestoreMessage({
+          type: "success",
+          text: "Synced with billing. No active subscription on this account yet.",
+        });
+      }
     } catch {
-      setRestoreMessage({ type: "error", text: "Nothing to restore, or an error occurred." });
+      setRestoreMessage({ type: "error", text: "Couldn’t sync purchases. Try again." });
     } finally {
       setRestoreLoading(false);
     }
@@ -245,13 +260,13 @@ export default function AccountPage() {
           )}
         </section>
 
-        {/* Restore purchases */}
+        {/* Subscription / restore (secondary to main app upgrade CTAs) */}
         <section style={{ marginTop: "32px", paddingTop: "24px", borderTop: "1px solid var(--soft)" }}>
           <h2 style={{ fontSize: "14px", fontWeight: 600, color: "var(--ink)", marginBottom: "4px" }}>
-            Restore purchases
+            Subscription
           </h2>
           <p style={{ fontSize: "13px", color: "var(--ink-soft)", marginBottom: "12px" }}>
-            Already subscribed? Tap below to restore your access on this device.
+            Already subscribed? Restore or sync purchases for this account (same as the small link on the upgrade sheet).
           </p>
           <button
             type="button"

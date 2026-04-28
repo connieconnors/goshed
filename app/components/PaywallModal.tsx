@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, type CSSProperties } from "react";
 import { MOMENT_COPY } from "@/lib/momentCopy";
 import { FREE_LOGGED_IN_ITEM_LIMIT } from "@/lib/freeTier";
 import { useAuthSession } from "@/lib/auth-session-context";
@@ -20,6 +20,17 @@ type PaywallModalProps = {
 };
 
 const API_KEY = process.env.NEXT_PUBLIC_REVENUECAT_API_KEY ?? "";
+
+/** Modal-only safe padding (does not touch global layout freeze). */
+const PAYWALL_OVERLAY_SAFE_PADDING: Pick<
+  CSSProperties,
+  "paddingTop" | "paddingBottom" | "paddingLeft" | "paddingRight"
+> = {
+  paddingTop: "max(16px, env(safe-area-inset-top, 0px))",
+  paddingBottom: "max(16px, env(safe-area-inset-bottom, 0px))",
+  paddingLeft: "max(16px, env(safe-area-inset-left, 0px))",
+  paddingRight: "max(16px, env(safe-area-inset-right, 0px))",
+};
 
 /**
  * RevenueCat only fills `offering.monthly` / `offering.annual` when packages use the
@@ -93,6 +104,8 @@ export function PaywallModal({
   /** Last RevenueCat offerings summary or fetch outcome (for paywall disabled diagnostics). */
   const lastOfferingsSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const { refresh } = useAuthSession();
+  const [restoreLoading, setRestoreLoading] = useState(false);
+  const [restoreMessage, setRestoreMessage] = useState<string | null>(null);
 
   const retryPlansFetch = useCallback(() => {
     setPlansIssueMessage(null);
@@ -144,6 +157,8 @@ export function PaywallModal({
       pendingUpgradeUserIdRef.current = null;
       setOfferingsRetryNonce(0);
       setPlansIssueMessage(null);
+      setRestoreLoading(false);
+      setRestoreMessage(null);
       return;
     }
 
@@ -487,6 +502,66 @@ export function PaywallModal({
     });
   }, [open, userId, plansSettled, plansLoading, yearlyPackage, monthlyPackage, purchasing]);
 
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (purchasing || guestSignupSubmitting || upgradeNudgeSubmitting) return;
+      if (guestSignupOpen) {
+        setGuestSignupOpen(false);
+        setGuestPendingPlan(null);
+        setGuestSignupError(null);
+        setGuestPassword("");
+        setGuestConfirmPassword("");
+        return;
+      }
+      if (upgradeNudgeModalOpen) {
+        pendingUpgradePlanRef.current = null;
+        pendingUpgradeUserIdRef.current = null;
+        setUpgradeNudgeModalOpen(false);
+        setUpgradeNudgeError(null);
+        return;
+      }
+      onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [
+    open,
+    purchasing,
+    guestSignupSubmitting,
+    upgradeNudgeSubmitting,
+    guestSignupOpen,
+    upgradeNudgeModalOpen,
+    onClose,
+  ]);
+
+  const handleRefreshSubscriptionStatus = useCallback(async () => {
+    if (!userId || restoreLoading) return;
+    setRestoreLoading(true);
+    setRestoreMessage(null);
+    try {
+      if (!API_KEY.trim() || !Purchases.isConfigured()) {
+        setRestoreMessage("Billing isn’t available right now. Try again later.");
+        return;
+      }
+      const purchases = Purchases.getSharedInstance();
+      await purchases.getCustomerInfo();
+      const snap = await refresh();
+      if (snap.isPro) {
+        setRestoreMessage("GoShed Pro is active on this account.");
+        onPurchaseSuccess?.();
+        window.setTimeout(() => onClose(), 900);
+      } else {
+        setRestoreMessage("No active subscription found for this account yet.");
+      }
+    } catch {
+      setRestoreMessage("Couldn’t refresh status. Try again.");
+    } finally {
+      setRestoreLoading(false);
+    }
+  }, [userId, restoreLoading, refresh, onPurchaseSuccess, onClose]);
+
   if (!open) return null;
 
   const signedIn = !!userId;
@@ -534,7 +609,7 @@ export function PaywallModal({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: 24,
+        ...PAYWALL_OVERLAY_SAFE_PADDING,
         background: "rgba(0,0,0,0.5)",
       }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
@@ -547,6 +622,9 @@ export function PaywallModal({
           padding: 28,
           maxWidth: 380,
           width: "100%",
+          maxHeight: "min(560px, calc(100dvh - 32px))",
+          overflowY: "auto",
+          WebkitOverflowScrolling: "touch",
           boxShadow: "0 8px 32px rgba(44,36,22,0.15)",
           fontFamily: "var(--font-body)",
         }}
@@ -558,10 +636,10 @@ export function PaywallModal({
           aria-label="Close"
           style={{
             position: "absolute",
-            top: 12,
-            right: 12,
-            width: 28,
-            height: 28,
+            top: 8,
+            right: 8,
+            width: 44,
+            height: 44,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -569,7 +647,7 @@ export function PaywallModal({
             background: "none",
             border: "none",
             color: "var(--ink-soft)",
-            fontSize: 18,
+            fontSize: 22,
             lineHeight: 1,
             cursor: "pointer",
             fontFamily: "inherit",
@@ -673,23 +751,59 @@ export function PaywallModal({
             <p style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 8, textAlign: "center", lineHeight: 1.5 }}>
               Cancel anytime.
             </p>
-            {!showPromoInput ? (
-              <button
-                type="button"
-                onClick={() => setShowPromoInput(true)}
-                style={{
-                  marginTop: 14,
-                  background: "none",
-                  border: "none",
-                  padding: 0,
-                  color: "var(--ink-soft)",
-                  fontSize: 14,
-                  cursor: "pointer",
-                  textDecoration: "underline",
-                }}
-              >
-                Have a code?
-              </button>
+            <div
+              style={{
+                marginTop: 10,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              {!showPromoInput ? (
+                <button
+                  type="button"
+                  onClick={() => setShowPromoInput(true)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    color: "var(--ink-soft)",
+                    fontSize: 13,
+                    cursor: "pointer",
+                    textDecoration: "underline",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  Have a code?
+                </button>
+              ) : null}
+              {signedIn ? (
+                <button
+                  type="button"
+                  disabled={restoreLoading || purchasing || !API_KEY.trim()}
+                  onClick={() => void handleRefreshSubscriptionStatus()}
+                  aria-label="Restore purchases: sync subscription status with billing for this account"
+                  style={{
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    color: "var(--ink-soft)",
+                    fontSize: 12,
+                    fontWeight: 400,
+                    cursor: restoreLoading || purchasing || !API_KEY.trim() ? "not-allowed" : "pointer",
+                    textDecoration: "underline",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {restoreLoading ? "Syncing…" : "Restore purchases"}
+                </button>
+              ) : null}
+            </div>
+            {restoreMessage ? (
+              <p style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 6, textAlign: "center", lineHeight: 1.45 }}>
+                {restoreMessage}
+              </p>
             ) : null}
           </>
         ) : null}
@@ -751,7 +865,7 @@ export function PaywallModal({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            padding: 16,
+            ...PAYWALL_OVERLAY_SAFE_PADDING,
             background: "rgba(44,36,22,0.35)",
           }}
           onClick={() => {
@@ -772,6 +886,9 @@ export function PaywallModal({
             style={{
               width: "100%",
               maxWidth: 340,
+              maxHeight: "min(520px, calc(100dvh - 32px))",
+              overflowY: "auto",
+              WebkitOverflowScrolling: "touch",
               background: "var(--white)",
               borderRadius: 16,
               padding: "22px 20px",
@@ -975,7 +1092,7 @@ export function PaywallModal({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            padding: 16,
+            ...PAYWALL_OVERLAY_SAFE_PADDING,
             background: "rgba(44,36,22,0.35)",
           }}
           onClick={() => {

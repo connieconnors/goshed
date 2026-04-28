@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Cormorant_Garamond, Source_Serif_4 } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
+import "./home-viewport-overrides.css";
 import { ClearGuestGateDismissedOnAuth } from "@/app/components/ClearGuestGateDismissedOnAuth";
 import { AuthSessionProvider } from "@/lib/auth-session-context";
 import { PasswordOnboardingGate } from "@/app/components/PasswordOnboardingGate";
@@ -24,6 +25,8 @@ const sourceSerif = Source_Serif_4({
 
 export const viewport: Viewport = {
   themeColor: "#F5F0E8",
+  /** Required for CSS `env(safe-area-inset-*)` in embedded WebViews and standalone web. */
+  viewportFit: "cover",
 };
 
 export const metadata: Metadata = {
@@ -77,7 +80,10 @@ export default function RootLayout({
             gtag('config', '${GA_MEASUREMENT_ID}');
           `}
         </Script>
-        <div style={{ flex: 1, display: "flex", flexDirection: "column" }} suppressHydrationWarning>
+        <div
+          style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}
+          suppressHydrationWarning
+        >
           <AuthSessionProvider>
             <PasswordOnboardingGate>
               <ClearGuestGateDismissedOnAuth />

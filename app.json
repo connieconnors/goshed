@@ -28,6 +28,15 @@
     },
     "web": {
       "favicon": "./public/goshed-favicon-light.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "GoShed uses your camera to photograph items so we can suggest what to do with them, like donate, sell, or gift.",
+          "recordAudioAndroid": false
+        }
+      ]
+    ]
   }
 }

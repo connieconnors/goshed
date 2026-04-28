@@ -1,6 +1,6 @@
+import { Camera } from 'expo-camera';
 import React, { useCallback, useMemo, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { PERMISSIONS, request } from 'react-native-permissions';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { WebViewMessageEvent } from 'react-native-webview';
 import { WebView } from 'react-native-webview';
@@ -35,12 +35,8 @@ export default function App() {
   const onWebViewMessage = useCallback((event: WebViewMessageEvent) => {
     if (event.nativeEvent.data !== NATIVE_AI_CONSENT_MSG) return;
     void (async () => {
-      if (Platform.OS === 'ios') {
-        await request(PERMISSIONS.IOS.CAMERA);
-        return;
-      }
-      if (Platform.OS === 'android') {
-        await request(PERMISSIONS.ANDROID.CAMERA);
+      if (Platform.OS === 'ios' || Platform.OS === 'android') {
+        await Camera.requestCameraPermissionsAsync();
       }
     })();
   }, []);

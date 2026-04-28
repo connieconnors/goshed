@@ -19,7 +19,7 @@ export function SiteFooter() {
   return (
     <footer
       style={{
-        padding: "16px 24px",
+        padding: "14px 20px calc(14px + env(safe-area-inset-bottom, 0px))",
         textAlign: "center",
         fontSize: "11px",
         color: "var(--ink-soft)",

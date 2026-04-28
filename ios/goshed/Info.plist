@@ -37,12 +37,6 @@
     <string>12.0</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
-    <key>NSCameraUsageDescription</key>
-    <string>GoShed uses your camera to photograph items so we can suggest what to do with them—like donate, sell, or gift.</string>
-    <key>NSPhotoLibraryUsageDescription</key>
-    <string>GoShed can use photos you pick from your library to identify items and suggest next steps.</string>
-    <key>NSLocationWhenInUseUsageDescription</key>
-    <string>GoShed uses your general area to suggest nearby donation drop-offs and pickup options when you choose Donate.</string>
     <key>NSAppTransportSecurity</key>
     <dict>
       <key>NSAllowsArbitraryLoads</key>
@@ -50,6 +44,12 @@
       <key>NSAllowsLocalNetworking</key>
       <true/>
     </dict>
+    <key>NSCameraUsageDescription</key>
+    <string>GoShed uses your camera to photograph items so we can suggest what to do with them, like donate, sell, or gift.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>GoShed uses your general area to suggest nearby donation drop-offs and pickup options when you choose Donate.</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>GoShed can use photos you pick from your library to identify items and suggest next steps.</string>
     <key>RCTNewArchEnabled</key>
     <true/>
     <key>UILaunchStoryboardName</key>

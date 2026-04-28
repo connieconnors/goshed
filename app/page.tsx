@@ -1030,9 +1030,21 @@ function HomeContent() {
   };
 
   // Defer full UI until after mount so server and client render identical HTML and hydration never mismatches (e.g. with extensions that alter the DOM).
+  const homeShellStyle: CSSProperties = {
+    flex: 1,
+    width: "100%",
+    minHeight: 0,
+    background: "var(--bg)",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    boxSizing: "border-box",
+    padding: "36px 20px",
+  };
+
   if (!mounted) {
     return (
-      <main style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '48px 24px' }}>
+      <main className="goshed-home-main" style={{ ...homeShellStyle, justifyContent: "center" }}>
         <div style={{ width: '100%', maxWidth: '390px', textAlign: 'center' }}>
           <p style={{ color: 'var(--ink-soft)', fontSize: '14px' }}>Loading…</p>
         </div>
@@ -1041,7 +1053,7 @@ function HomeContent() {
   }
 
   return (
-    <main style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '48px 24px' }}>
+    <main className="goshed-home-main" style={homeShellStyle}>
       <div style={{ width: '100%', maxWidth: '390px' }}>
         {/* Header — z-index keeps controls above in-page layers; Sign in uses router.push so navigation isn’t lost to overlays/prefetch edge cases */}
         <div
@@ -1123,6 +1135,7 @@ function HomeContent() {
         />
         <div role="button" tabIndex={0} onClick={handleZoneClick}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleZoneClick(); } }}
+          className="goshed-photo-slot"
           style={{ marginTop: '28px', background: 'var(--surface)', borderRadius: '20px', border: '1.5px dashed var(--soft)', height: '280px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', cursor: 'pointer', overflow: 'hidden', position: 'relative' }}>
           {previewUrl ? (
             <img src={previewUrl} alt="Selected item" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '26px' }} />
@@ -1802,9 +1815,14 @@ function HomeContent() {
             </button>
             <p style={{ fontSize: "11px", color: "var(--ink-soft)", marginTop: "12px", textAlign: "center" }}>
               By continuing you agree to our{" "}
-              <a href="/privacy" style={{ color: "var(--ink-soft)" }}>Privacy Policy</a>
+              <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: "var(--ink-soft)" }}>
+                Privacy Policy
+              </a>
               {" "}and{" "}
-              <a href="/terms" style={{ color: "var(--ink-soft)" }}>Terms</a>.
+              <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: "var(--ink-soft)" }}>
+                Terms
+              </a>
+              .
             </p>
           </div>
         </div>

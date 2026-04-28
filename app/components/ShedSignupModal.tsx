@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
@@ -9,6 +9,16 @@ import { addEmailWithPassword } from "@/lib/authPasswordHint";
 
 const LAST_LOGIN_EMAIL_KEY = "goshed_last_login_email";
 const SKIP_PASSWORD_GATE_ONCE_KEY = "goshed_skip_password_gate_once";
+
+const SHED_MODAL_OVERLAY_SAFE_PADDING: Pick<
+  CSSProperties,
+  "paddingTop" | "paddingBottom" | "paddingLeft" | "paddingRight"
+> = {
+  paddingTop: "max(16px, env(safe-area-inset-top, 0px))",
+  paddingBottom: "max(16px, env(safe-area-inset-bottom, 0px))",
+  paddingLeft: "max(16px, env(safe-area-inset-left, 0px))",
+  paddingRight: "max(16px, env(safe-area-inset-right, 0px))",
+};
 
 type Props = {
   open: boolean;
@@ -126,7 +136,7 @@ export function ShedSignupModal({ open, onClose }: Props) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: 24,
+        ...SHED_MODAL_OVERLAY_SAFE_PADDING,
         background: "rgba(44,36,22,0.45)",
       }}
       onClick={() => {
@@ -145,8 +155,9 @@ export function ShedSignupModal({ open, onClose }: Props) {
           padding: 28,
           maxWidth: 400,
           width: "100%",
-          maxHeight: "90vh",
+          maxHeight: "min(90vh, calc(100dvh - 32px))",
           overflowY: "auto",
+          WebkitOverflowScrolling: "touch",
           boxShadow: "0 12px 40px rgba(44,36,22,0.18)",
           border: "1px solid var(--surface2)",
           fontFamily: "inherit",
@@ -162,16 +173,16 @@ export function ShedSignupModal({ open, onClose }: Props) {
           disabled={submitting}
           style={{
             position: "absolute",
-            top: 10,
-            right: 10,
-            width: 32,
-            height: 32,
+            top: 6,
+            right: 6,
+            width: 44,
+            height: 44,
             borderRadius: 999,
             border: "1px solid var(--surface2)",
             background: "var(--white)",
             color: "var(--ink-soft)",
-            fontSize: 18,
-            lineHeight: "30px",
+            fontSize: 20,
+            lineHeight: "42px",
             textAlign: "center",
             cursor: submitting ? "not-allowed" : "pointer",
           }}

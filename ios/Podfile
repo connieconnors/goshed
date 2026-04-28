@@ -20,15 +20,6 @@ platform :ios, podfile_properties['ios.deploymentTarget'] || '15.1'
 
 prepare_react_native_project!
 
-require File.join(
-  File.dirname(`node --print "require.resolve('react-native-permissions/package.json')"`.strip),
-  "scripts",
-  "setup.rb"
-)
-setup_permissions([
-  "Camera",
-])
-
 target 'goshed' do
   use_expo_modules!
 

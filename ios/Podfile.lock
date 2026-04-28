@@ -28,6 +28,12 @@ PODS:
     - Yoga
   - ExpoAsset (55.0.16):
     - ExpoModulesCore
+  - ExpoCamera (55.0.16):
+    - ExpoModulesCore
+  - ExpoCameraBarcodeScanning (55.0.16):
+    - ExpoCamera
+    - ZXingObjC/OneD
+    - ZXingObjC/PDF417
   - ExpoDomWebView (55.0.5):
     - ExpoModulesCore
   - ExpoFileSystem (55.0.17):
@@ -1940,34 +1946,19 @@ PODS:
     - React-utils (= 0.83.6)
     - ReactNativeDependencies
   - ReactNativeDependencies (0.83.6)
-  - RNPermissions (5.5.1):
-    - hermes-engine
-    - RCTRequired
-    - RCTTypeSafety
-    - React-Core
-    - React-Core-prebuilt
-    - React-debug
-    - React-Fabric
-    - React-featureflags
-    - React-graphics
-    - React-ImageManager
-    - React-jsi
-    - React-NativeModulesApple
-    - React-RCTFabric
-    - React-renderercss
-    - React-rendererdebug
-    - React-utils
-    - ReactCodegen
-    - ReactCommon/turbomodule/bridging
-    - ReactCommon/turbomodule/core
-    - ReactNativeDependencies
-    - Yoga
   - Yoga (0.0.0)
+  - ZXingObjC/Core (3.6.9)
+  - ZXingObjC/OneD (3.6.9):
+    - ZXingObjC/Core
+  - ZXingObjC/PDF417 (3.6.9):
+    - ZXingObjC/Core
 
 DEPENDENCIES:
   - EXConstants (from `../node_modules/expo-constants/ios`)
   - Expo (from `../node_modules/expo`)
   - ExpoAsset (from `../node_modules/expo-asset/ios`)
+  - ExpoCamera (from `../node_modules/expo-camera/ios`)
+  - ExpoCameraBarcodeScanning (from `../node_modules/expo-camera/ios`)
   - "ExpoDomWebView (from `../node_modules/@expo/dom-webview/ios`)"
   - ExpoFileSystem (from `../node_modules/expo-file-system/ios`)
   - ExpoFont (from `../node_modules/expo-font/ios`)
@@ -2050,8 +2041,11 @@ DEPENDENCIES:
   - ReactCodegen (from `build/generated/ios/ReactCodegen`)
   - ReactCommon/turbomodule/core (from `../node_modules/react-native/ReactCommon`)
   - ReactNativeDependencies (from `../node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec`)
-  - RNPermissions (from `../node_modules/react-native-permissions`)
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
+
+SPEC REPOS:
+  trunk:
+    - ZXingObjC
 
 EXTERNAL SOURCES:
   EXConstants:
@@ -2060,6 +2054,10 @@ EXTERNAL SOURCES:
     :path: "../node_modules/expo"
   ExpoAsset:
     :path: "../node_modules/expo-asset/ios"
+  ExpoCamera:
+    :path: "../node_modules/expo-camera/ios"
+  ExpoCameraBarcodeScanning:
+    :path: "../node_modules/expo-camera/ios"
   ExpoDomWebView:
     :path: "../node_modules/@expo/dom-webview/ios"
   ExpoFileSystem:
@@ -2223,8 +2221,6 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native/ReactCommon"
   ReactNativeDependencies:
     :podspec: "../node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec"
-  RNPermissions:
-    :path: "../node_modules/react-native-permissions"
   Yoga:
     :path: "../node_modules/react-native/ReactCommon/yoga"
 
@@ -2232,6 +2228,8 @@ SPEC CHECKSUMS:
   EXConstants: 5caf448ff399f60be9d1053e77aed32e39411900
   Expo: bfedba58da14bf45546ae57e6a5bd5152a1546b4
   ExpoAsset: f56ed740b6a127da2bfd90832cf688ae309d4410
+  ExpoCamera: 0ed88db61b7dc54712a98b8baaf415a3be88b76b
+  ExpoCameraBarcodeScanning: 1a003bdf373e94e82164b054f440efb2d10f2f38
   ExpoDomWebView: 2b2fbd9a07de8790569257cbf9dfdaa31cf95c70
   ExpoFileSystem: a0e4a5a09c9c4f84338289b273a172609452dec9
   ExpoFont: cdd7a1d574a376fa003c713eff49e0a4df8672c7
@@ -2313,9 +2311,9 @@ SPEC CHECKSUMS:
   ReactCodegen: 169fa6c4ad3c3065f98fa2364bf95e9a21c3afec
   ReactCommon: ba28cd4e7d9e24014d2772a80e32da020c732b00
   ReactNativeDependencies: 3a27b9f16a64708e7d9b53d093c1aebac1653cd9
-  RNPermissions: fbd6fafddbb765708f7330fcc22735a5e1b2a2f2
   Yoga: e41d64347f52d634dd8c2f6bac33f95081959fd3
+  ZXingObjC: 8898711ab495761b2dbbdec76d90164a6d7e14c5
 
-PODFILE CHECKSUM: cc17bc8224064cc5545d0a07cddfea2c9612125f
+PODFILE CHECKSUM: e10576c05fcb89887b9fea92864b1db503008453
 
 COCOAPODS: 1.16.2
