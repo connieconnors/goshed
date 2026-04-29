@@ -80,18 +80,18 @@ export default function RootLayout({
             gtag('config', '${GA_MEASUREMENT_ID}');
           `}
         </Script>
-        <div
-          style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}
-          suppressHydrationWarning
-        >
-          <AuthSessionProvider>
+        <AuthSessionProvider>
+          <div
+            style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}
+            suppressHydrationWarning
+          >
             <PasswordOnboardingGate>
               <ClearGuestGateDismissedOnAuth />
               {children}
             </PasswordOnboardingGate>
-          </AuthSessionProvider>
-        </div>
-        <SiteFooter />
+          </div>
+          <SiteFooter />
+        </AuthSessionProvider>
       </body>
     </html>
   );
