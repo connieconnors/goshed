@@ -47,6 +47,16 @@ function isLikelyConsignmentResaleName(name: string): boolean {
   return /\b(consign|consignment|resale|re-?sale|tag\s+sale|worth\s+repeating)\b/.test(n);
 }
 
+/** Donation search filter — excludes vehicle-donation SEO results without globally blocking "car". */
+function isLikelyVehicleDonationResult(name: string): boolean {
+  const n = name.toLowerCase();
+  return (
+    /\b(car|vehicle|auto)\s+donations?\b/.test(n) ||
+    /\bdonat(e|ion)\s+(your\s+)?(car|vehicle|auto)\b/.test(n) ||
+    /\bjunk\s+car\b/.test(n)
+  );
+}
+
 async function fetchPlaces(
   apiKey: string,
   query: string,
@@ -106,6 +116,7 @@ export async function POST(request: NextRequest) {
       const places = dedupePlacesByNameAndDistance(
         [...byId.values()]
           .filter((p) => !isLikelyConsignmentResaleName(p.name))
+          .filter((p) => !isLikelyVehicleDonationResult(p.name))
           .sort((a, b) => a.distance_mi - b.distance_mi)
       ).slice(0, 8);
       return NextResponse.json({ places, pickupPlaces: [] });
@@ -129,7 +140,9 @@ export async function POST(request: NextRequest) {
         if (!byId.has(p.place_id)) byId.set(p.place_id, p);
       });
       const places = dedupePlacesByNameAndDistance(
-        [...byId.values()].sort((a, b) => a.distance_mi - b.distance_mi)
+        [...byId.values()]
+          .filter((p) => !isLikelyVehicleDonationResult(p.name))
+          .sort((a, b) => a.distance_mi - b.distance_mi)
       ).slice(0, 8);
       return NextResponse.json({ places, pickupPlaces: [] });
     }
@@ -138,20 +151,29 @@ export async function POST(request: NextRequest) {
 
     const pickupSearchPromise: Promise<PlaceHit[]> = bulkyPickup
       ? Promise.all([
-          fetchPlaces(apiKey, "Habitat for Humanity ReStore", lat, lng),
-          fetchPlaces(apiKey, "St. Vincent de Paul", lat, lng),
-          fetchPlaces(apiKey, "Salvation Army", lat, lng),
-        ]).then(([restoreHits, svdphits, saHits]) => {
+          fetchPlaces(apiKey, "Breast Cancer donation pickup", lat, lng),
+          fetchPlaces(apiKey, "Vietnam Veterans donation pickup", lat, lng),
+          fetchPlaces(apiKey, "Big Brothers Big Sisters donation pickup", lat, lng),
+          fetchPlaces(apiKey, "Lupus Foundation donation pickup", lat, lng),
+          fetchPlaces(apiKey, "GreenDrop donation pickup", lat, lng),
+          fetchPlaces(apiKey, "Habitat for Humanity ReStore donation pickup", lat, lng),
+          fetchPlaces(apiKey, "Salvation Army donation pickup", lat, lng),
+          fetchPlaces(apiKey, "St. Vincent de Paul donation pickup", lat, lng),
+          fetchPlaces(apiKey, "furniture donation pickup charity", lat, lng),
+        ]).then((pickupResults) => {
           const pickupById = new Map<string, PlaceHit>();
-          for (const p of [...restoreHits, ...svdphits, ...saHits]) {
+          for (const p of pickupResults.flat()) {
             const existing = pickupById.get(p.place_id);
             if (existing == null || p.distance_mi < existing.distance_mi) {
               pickupById.set(p.place_id, p);
             }
           }
           return dedupePlacesByNameAndDistance(
-            [...pickupById.values()].sort((a, b) => a.distance_mi - b.distance_mi)
-          ).slice(0, 3);
+            [...pickupById.values()]
+              .filter((p) => !isLikelyConsignmentResaleName(p.name))
+              .filter((p) => !isLikelyVehicleDonationResult(p.name))
+              .sort((a, b) => a.distance_mi - b.distance_mi)
+          ).slice(0, 5);
         })
       : Promise.resolve([]);
 
@@ -162,8 +184,7 @@ export async function POST(request: NextRequest) {
     const queryPromises: Promise<PlaceHit[]>[] = [
       fetchPlaces(apiKey, "thrift store", lat, lng),
       fetchPlaces(apiKey, "donation drop off", lat, lng),
-      fetchPlaces(apiKey, "Veterans of America pickup", lat, lng),
-      fetchPlaces(apiKey, "breast cancer charity clothing donation pickup", lat, lng),
+      fetchPlaces(apiKey, "charity donation center", lat, lng),
     ];
     if (medical) {
       queryPromises.push(fetchPlaces(apiKey, "senior center", lat, lng));
@@ -188,9 +209,12 @@ export async function POST(request: NextRequest) {
       [...byId.values()]
         .filter((p) => !pickupIds.has(p.place_id))
         .filter((p) => !isLikelyConsignmentResaleName(p.name))
+        .filter((p) => !isLikelyVehicleDonationResult(p.name))
         .sort((a, b) => a.distance_mi - b.distance_mi)
     ).slice(0, 5);
-    const pickupDeduped = dedupePlacesByNameAndDistance(pickupPlaces);
+    const pickupDeduped = dedupePlacesByNameAndDistance(
+      pickupPlaces.filter((p) => !isLikelyVehicleDonationResult(p.name))
+    );
     return NextResponse.json({ places, pickupPlaces: pickupDeduped });
   } catch {
     return NextResponse.json({ places: [], pickupPlaces: [] });

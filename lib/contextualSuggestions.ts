@@ -213,8 +213,8 @@ export function isLargeItem(itemLabel: string, description?: string): boolean {
 
 /**
  * Furniture, appliances, exercise equipment, large rugs, mattresses, or large TVs — orgs that
- * sometimes schedule donation pickup (ReStore, SVdP, Salvation Army). Never true for textiles,
- * clothing, blankets, or small items alone. Not used for animal shelters (drop-off only).
+ * sometimes schedule donation pickup. Never true for textiles, clothing, blankets, or small
+ * items alone. Not used for animal shelters (drop-off only).
  */
 export function isBulkyPickupDonationContext(itemLabel: string | undefined, description?: string): boolean {
   if (isVehicleDonationItem(itemLabel, description)) return false;
@@ -256,6 +256,7 @@ export function isBulkyPickupDonationContext(itemLabel: string | undefined, desc
     /\b(tv|television|flat screen|plasma|curved tv|hdtv|big screen|entertainment center)\b/.test(t) ||
     /\b(area rug|oriental rug|persian rug|large rug|room\s*sized rug)\b/.test(t) ||
     (/\brug\b/.test(t) && /\b(large|oversized|heavy|8\s*x|9\s*x|10\s*x|9x12|8x10)\b/.test(t)) ||
+    /\b(estate items?|estate cleanout|bulky household goods?|large household goods?|large donation candidates?)\b/.test(t) ||
     /\b(large|bulky|heavy|oversized)\b/.test(t)
   );
 }

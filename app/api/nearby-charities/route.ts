@@ -21,10 +21,13 @@ function haversineKm(
 
 const MAX_DISTANCE_KM = 16;
 
-const VEHICLE_NAME_WORDS = ["car", "auto", "vehicle", "truck", "motor"];
-function isVehicleDonationPlace(name: string): boolean {
+function isLikelyVehicleDonationResult(name: string): boolean {
   const lower = name.toLowerCase();
-  return VEHICLE_NAME_WORDS.some((w) => lower.includes(w));
+  return (
+    /\b(car|vehicle|auto)\s+donations?\b/.test(lower) ||
+    /\bdonat(e|ion)\s+(your\s+)?(car|vehicle|auto)\b/.test(lower) ||
+    /\bjunk\s+car\b/.test(lower)
+  );
 }
 
 const ITEM_CATEGORIES = ["furniture", "clothing", "housewares", "electronics", "books", "art", "general"] as const;
@@ -138,7 +141,7 @@ export async function POST(request: NextRequest) {
         if (loc && haversineKm(userLat, userLng, loc.lat, loc.lng) > MAX_DISTANCE_KM) return false;
         return true;
       })
-      .filter((place) => !isVehicleDonationPlace(place.name ?? ""))
+      .filter((place) => !isLikelyVehicleDonationResult(place.name ?? ""))
       .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
       .slice(0, 5)
       .map((place) => ({

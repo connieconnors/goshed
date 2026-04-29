@@ -1,12 +1,15 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
+import { useAuthSession } from "@/lib/auth-session-context";
 
 const linkStyle = { color: "inherit" as const, textDecoration: "none" as const };
 
 export function SiteFooter() {
   const pathname = usePathname();
   const router = useRouter();
+  const { isPro, code } = useAuthSession();
+  const hasPremiumAccess = isPro || Boolean(code);
 
   const openVoluntaryPaywall = () => {
     if (pathname === "/") {
@@ -39,20 +42,24 @@ export function SiteFooter() {
         Contact
       </a>
       {" · "}
-      <button
-        type="button"
-        onClick={openVoluntaryPaywall}
-        style={{
-          ...linkStyle,
-          background: "none",
-          border: "none",
-          padding: 0,
-          font: "inherit",
-          cursor: "pointer",
-        }}
-      >
-        Upgrade ✦
-      </button>
+      {hasPremiumAccess ? (
+        <span style={linkStyle}>Premium active ✦</span>
+      ) : (
+        <button
+          type="button"
+          onClick={openVoluntaryPaywall}
+          style={{
+            ...linkStyle,
+            background: "none",
+            border: "none",
+            padding: 0,
+            font: "inherit",
+            cursor: "pointer",
+          }}
+        >
+          Go unlimited ✦
+        </button>
+      )}
     </footer>
   );
 }

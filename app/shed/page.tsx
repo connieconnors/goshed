@@ -127,11 +127,9 @@ function PileItemLink({ item }: { item: ShedItem }) {
 
 export default function ShedPage() {
   const router = useRouter();
-  const { user: sessionUser, loading: sessionLoading, itemCount, refresh: refreshAuthSession } = useAuthSession();
+  const { user: sessionUser, loading: sessionLoading, itemCount, isPro, code, refresh: refreshAuthSession } = useAuthSession();
   const [items, setItems] = useState<ShedItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [mounted, setMounted] = useState(false);
   const [clearedExpanded, setClearedExpanded] = useState(true);
   const [showPaywallModal, setShowPaywallModal] = useState(false);
 
@@ -148,18 +146,12 @@ export default function ShedPage() {
   }, []);
 
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
     if (sessionLoading) return;
     let cancelled = false;
     if (!sessionUser) {
       router.replace("/set-password?redirect=/shed");
-      setLoading(false);
       return;
     }
-    if (sessionUser.email) setUserEmail(sessionUser.email);
     fetch("/api/items", { credentials: "include" })
       .then((res) => {
         if (cancelled) return null;
@@ -210,12 +202,17 @@ export default function ShedPage() {
 
   const savedItemTotal =
     typeof itemCount === "number" && Number.isFinite(itemCount) ? itemCount : items.length;
+  const hasPremiumAccess = isPro || Boolean(code);
 
   const closePaywallModal = useCallback(() => {
     setShowPaywallModal(false);
     void refreshAuthSession();
     refetchItems();
   }, [refreshAuthSession, refetchItems]);
+
+  if (!sessionLoading && !sessionUser) {
+    return null;
+  }
 
   if (loading) {
     return (
@@ -248,12 +245,28 @@ export default function ShedPage() {
         }
       `}</style>
       <div style={{ maxWidth: "560px", margin: "0 auto", padding: "0 1.25rem" }}>
-        <div style={{ padding: "48px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <Link href="/" style={{ fontFamily: "var(--font-cormorant)", fontSize: "24px", fontWeight: 300, color: "var(--ink)", textDecoration: "none" }}>
-            go<em style={{ color: "var(--accent)" }}>shed</em>
-          </Link>
+        <div style={{ padding: "48px 0 0", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <Link
+              href="/"
+              style={{
+                display: "inline-block",
+                fontSize: "12px",
+                color: "var(--ink-soft)",
+                textDecoration: "none",
+                fontFamily: "var(--font-body)",
+                marginBottom: "6px",
+              }}
+            >
+              ← Home
+            </Link>
+            <br />
+            <Link href="/" style={{ fontFamily: "var(--font-cormorant)", fontSize: "24px", fontWeight: 300, color: "var(--ink)", textDecoration: "none" }}>
+              go<em style={{ color: "var(--accent)" }}>shed</em>
+            </Link>
+          </div>
           <div style={{ textAlign: "right" }} suppressHydrationWarning>
-            {mounted && userEmail ? (
+            {sessionUser?.email ? (
               <>
                 <Link
                   href="/account"
@@ -262,7 +275,7 @@ export default function ShedPage() {
                   Account
                 </Link>
                 <span style={{ display: "block", fontSize: "12px", color: "var(--ink-soft)", margin: "2px 0 0", lineHeight: 1.2 }}>
-                  {userEmail}
+                  {sessionUser.email}
                 </span>
               </>
             ) : null}
@@ -292,38 +305,46 @@ export default function ShedPage() {
           }}
         >
           <span style={{ fontStyle: "italic" }}>
-            {savedItemTotal} of {FREE_LOGGED_IN_ITEM_LIMIT} items
+            {hasPremiumAccess ? `${savedItemTotal} items` : `${savedItemTotal} of ${FREE_LOGGED_IN_ITEM_LIMIT} items`}
           </span>
           <span style={{ color: "var(--surface2)", margin: "0 0.35rem" }}>·</span>
-          <button
-            type="button"
-            onClick={() => setShowPaywallModal(true)}
-            style={{
-              background: "none",
-              border: "none",
-              padding: 0,
-              margin: 0,
-              cursor: "pointer",
-              color: "var(--accent)",
-              fontSize: "12px",
-              fontFamily: "inherit",
-              textDecoration: "underline",
-            }}
-          >
-            Upgrade ✦
-          </button>
+          {hasPremiumAccess ? (
+            <span style={{ color: "var(--accent)", fontSize: "12px" }}>
+              Premium active ✦
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowPaywallModal(true)}
+              style={{
+                background: "none",
+                border: "none",
+                padding: 0,
+                margin: 0,
+                cursor: "pointer",
+                color: "var(--accent)",
+                fontSize: "12px",
+                fontFamily: "inherit",
+                textDecoration: "underline",
+              }}
+            >
+              Unlock unlimited items ✦
+            </button>
+          )}
         </p>
 
-        <PaywallModal
-          open={showPaywallModal}
-          onClose={closePaywallModal}
-          voluntary
-          itemCount={FREE_LOGGED_IN_ITEM_LIMIT}
-          onPurchaseSuccess={() => {
-            void refreshAuthSession();
-            refetchItems();
-          }}
-        />
+        {!hasPremiumAccess ? (
+          <PaywallModal
+            open={showPaywallModal}
+            onClose={closePaywallModal}
+            voluntary
+            itemCount={FREE_LOGGED_IN_ITEM_LIMIT}
+            onPurchaseSuccess={() => {
+              void refreshAuthSession();
+              refetchItems();
+            }}
+          />
+        ) : null}
 
         <div style={{ display: "flex", flexDirection: "column", gap: "10px", paddingBottom: "0.5rem" }}>
           {(["sell", "donate", "gift"] as const).map((id) => {

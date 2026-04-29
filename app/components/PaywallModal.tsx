@@ -194,7 +194,7 @@ export function PaywallModal({
       if (!API_KEY.trim()) {
         lastOfferingsSnapshotRef.current = { reason: "missing_NEXT_PUBLIC_REVENUECAT_API_KEY" };
         console.warn("[PaywallModal] Billing key missing — set NEXT_PUBLIC_REVENUECAT_API_KEY", lastOfferingsSnapshotRef.current);
-        setPlansIssueMessage("Subscription options aren’t available in this version of the app. Try again later or use “Have a code?” below.");
+        setPlansIssueMessage("Subscription options aren’t available in this version of the app. Try again later or choose “Use an invite code” below.");
         finish();
         return;
       }
@@ -244,7 +244,7 @@ export function PaywallModal({
         if (!monthly && !yearly) {
           console.warn("[PaywallModal] No monthly/annual package on current offering — check RC dashboard package types ($rc_monthly / $rc_annual or matching types).", summary);
           setPlansIssueMessage(
-            "We couldn’t load subscription plans. Tap Try again, or use “Have a code?” if you have one."
+            "We couldn’t load subscription plans. Tap Try again, or choose “Use an invite code” if you have one."
           );
         } else {
           setPlansIssueMessage(null);
@@ -261,7 +261,7 @@ export function PaywallModal({
         setMonthlyPackage(null);
         setYearlyPackage(null);
         setPlansIssueMessage(
-          "We couldn’t load subscription options. Check your connection, tap Try again, or use “Have a code?” below."
+          "We couldn’t load subscription options. Check your connection, tap Try again, or choose “Use an invite code” below."
         );
       } finally {
         if (!cancelled) clearTimeout(timeoutId);
@@ -775,29 +775,34 @@ export function PaywallModal({
                     fontFamily: "inherit",
                   }}
                 >
-                  Have a code?
+                  Use an invite code
                 </button>
               ) : null}
               {signedIn ? (
-                <button
-                  type="button"
-                  disabled={restoreLoading || purchasing || !API_KEY.trim()}
-                  onClick={() => void handleRefreshSubscriptionStatus()}
-                  aria-label="Restore purchases: sync subscription status with billing for this account"
-                  style={{
-                    background: "none",
-                    border: "none",
-                    padding: 0,
-                    color: "var(--ink-soft)",
-                    fontSize: 12,
-                    fontWeight: 400,
-                    cursor: restoreLoading || purchasing || !API_KEY.trim() ? "not-allowed" : "pointer",
-                    textDecoration: "underline",
-                    fontFamily: "inherit",
-                  }}
-                >
-                  {restoreLoading ? "Syncing…" : "Restore purchases"}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    disabled={restoreLoading || purchasing || !API_KEY.trim()}
+                    onClick={() => void handleRefreshSubscriptionStatus()}
+                    aria-label="Restore purchases: sync subscription status with billing for this account"
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      color: "var(--ink-soft)",
+                      fontSize: 12,
+                      fontWeight: 400,
+                      cursor: restoreLoading || purchasing || !API_KEY.trim() ? "not-allowed" : "pointer",
+                      textDecoration: "underline",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    {restoreLoading ? "Syncing…" : "Restore purchases"}
+                  </button>
+                  <p style={{ fontSize: 12, color: "var(--ink-soft)", margin: 0, lineHeight: 1.45 }}>
+                    Already subscribed? Restore your access.
+                  </p>
+                </>
               ) : null}
             </div>
             {restoreMessage ? (

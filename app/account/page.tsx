@@ -266,7 +266,7 @@ export default function AccountPage() {
             Subscription
           </h2>
           <p style={{ fontSize: "13px", color: "var(--ink-soft)", marginBottom: "12px" }}>
-            Already subscribed? Restore or sync purchases for this account (same as the small link on the upgrade sheet).
+            Already subscribed? Restore your access on this device.
           </p>
           <button
             type="button"

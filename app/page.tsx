@@ -1468,10 +1468,10 @@ function HomeContent() {
                     {chosenDecision === 'donate' && pickupDonationPlaces.length > 0 && (
                       <div style={{ marginBottom: '14px' }}>
                         <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ink)', marginBottom: '6px', marginTop: 0 }}>
-                          Large-item donation spots (may offer pickup — call ahead):
+                          Pickup-capable donation services:
                         </p>
                         <p style={{ fontSize: '12px', color: 'var(--ink-soft)', lineHeight: 1.45, margin: '0 0 8px' }}>
-                          For furniture, appliances, and similar bulky donations only — not for clothing, bedding, or shelter drop-offs.
+                          Too big to drop off? These organizations may offer pickup for larger donations in some areas — call ahead to confirm.
                         </p>
                         <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '14px', lineHeight: 1.6, color: 'var(--ink)' }}>
                           {pickupDonationPlaces.map((place) => (
