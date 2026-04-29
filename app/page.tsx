@@ -210,11 +210,10 @@ function HomeContent() {
     refresh: refreshAuthSession,
     loading: sessionLoading,
     user: authUser,
-    isPro,
     welcomeSent,
   } = useAuthSession();
   const isLoggedIn = sessionLoading ? null : !!authUser;
-  const showFreePlanHomeCopy = !sessionLoading && (isLoggedIn === false || (isLoggedIn === true && !isPro));
+  const showFreePlanHomeCopy = !sessionLoading && isLoggedIn === false;
   const [decisionJustConfirmed, setDecisionJustConfirmed] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [contextualPlaces, setContextualPlaces] = useState<{ name: string; distance_mi: number; place_id: string }[]>([]);
@@ -1144,14 +1143,14 @@ function HomeContent() {
               <p style={{ fontFamily: 'var(--font-cormorant)', fontSize: '24px', fontStyle: 'italic', color: 'var(--ink)', textAlign: 'center', padding: '0 24px' }}>
                 What are you holding onto?
               </p>
-              <p style={{ fontSize: '13px', color: 'var(--ink-soft)' }}>Snap a picture — we'll figure out the rest</p>
+              <p style={{ fontSize: '13px', color: 'var(--ink-soft)' }}>Snap a picture — we&apos;ll figure out the rest</p>
             </>
           )}
         </div>
 
-        {/* Tagline + pills when logged out */}
+        {/* Tagline + pills under the upload box */}
         <div style={{ marginTop: '28px', textAlign: 'center' }}>
-          {isLoggedIn === false ? (
+          {isLoggedIn !== null ? (
             <>
               <p style={{ fontFamily: 'var(--font-cormorant)', fontSize: '20px', fontWeight: 300, color: 'var(--ink-soft)', lineHeight: 1.4, margin: 0 }}>
                 GoShed tells you what to do with it.
