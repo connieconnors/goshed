@@ -6,7 +6,6 @@
 
 import { parseValueRange } from "./parseValueRange";
 import {
-  BULK_PICKUP_DONATION_COPY,
   isBulkyPickupDonationContext,
   isShelterTextileContext,
 } from "./contextualSuggestions";
@@ -93,7 +92,7 @@ export function getRandomActionPrompt(
       return "Animal shelters and rescues use bedding like this — call ahead, then drop it off (they don’t pick up). Most thrift stores won’t take used pillows, plain sheets, or worn blankets.";
     }
     if (isBulkyPickupDonationContext(context.item_label, context.description)) {
-      return BULK_PICKUP_DONATION_COPY;
+      return "If it’s too awkward to carry, look for pickup before you move it twice.";
     }
   }
   if (type === "sell") {

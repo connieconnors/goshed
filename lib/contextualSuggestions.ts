@@ -228,7 +228,7 @@ export function isBulkyPickupDonationContext(itemLabel: string | undefined, desc
     /\b(textiles?|clothing|clothes|apparel|shirt|blouse|dress|skirt|pants|jeans|jacket|coat|sweater|hoodie|cardigan|socks?|underwear|lingerie|blanket|throw|comforter|quilt|duvet|towel|towels|bedding|linens?|pillow|pillows|sheets?|scarf|mittens|tablecloth|napkins?|fabric\s+scraps?)\b/.test(
       t
     ) &&
-    !/\b(furniture|sofa|couch|sectional|loveseat|futon|mattress|appliance|refrigerator|fridge|freezer|washer|washing machine|dryer|stove|dresser|bookshelf|treadmill|television|tv\b|entertainment center)\b/.test(
+    !/\b(furniture|sofa|couch|sectional|loveseat|futon|mattress|appliance|refrigerator|fridge|freezer|washer|washing machine|dryer|stove|dresser|chest of drawers|bookshelf|treadmill|television|tv\b|entertainment center)\b/.test(
       t
     ) &&
     !/\b(area rug|oriental rug|persian rug|large rug|room\s*sized rug)\b/.test(t) &&
@@ -246,7 +246,7 @@ export function isBulkyPickupDonationContext(itemLabel: string | undefined, desc
     return false;
   }
   return (
-    /\b(furniture|sofa|couch|sectional|loveseat|futon|table|desk|bed frame|bed\b|mattress|dresser|cabinet|bookshelf|bookcase|armoire|wardrobe|buffet|hutch|dining set)\b/.test(
+    /\b(furniture|sofa|couch|sectional|loveseat|futon|table|desk|bed frame|bed\b|mattress|dresser|chest of drawers|cabinet|bookshelf|bookcase|armoire|wardrobe|buffet|hutch|dining set)\b/.test(
       t
     ) ||
     /\b(appliance|refrigerator|fridge|freezer|washer|washing machine|dryer|stove|oven|range|dishwasher)\b/.test(t) ||
