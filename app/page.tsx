@@ -19,8 +19,11 @@ import {
   GUEST_ANALYSIS_LIMIT,
 } from '@/lib/freeTier';
 import {
+  clearGuestTrialStateAfterAuthTransition,
+  getStoredGuestAnalysisCount,
   guestGateDismissedInStorage,
   markGuestGateDismissed,
+  setStoredGuestAnalysisCount,
 } from '@/lib/guestGateStorage';
 
 type AnalyzeResult = {
@@ -244,14 +247,7 @@ function HomeContent() {
   const [showGuestGateModal, setShowGuestGateModal] = useState(false);
   const [shedSignupModalOpen, setShedSignupModalOpen] = useState(false);
   const guestGateDismissedRef = useRef(false);
-  const GUEST_COUNT_KEY = "goshed_guest_analysis_count";
-  const getStoredGuestCount = (): number => {
-    if (typeof localStorage === "undefined") return 0;
-    const v = localStorage.getItem(GUEST_COUNT_KEY);
-    const n = parseInt(v ?? "0", 10);
-    return Number.isFinite(n) ? n : 0;
-  };
-  const guestAnalysisCountRef = useRef(getStoredGuestCount());
+  const guestAnalysisCountRef = useRef(getStoredGuestAnalysisCount());
   /** Force guest-mode limit from URL (e.g. ?guest=1). Set in useEffect to avoid hydration mismatch. */
   const [forceGuestMode, setForceGuestMode] = useState(false);
   const effectiveGuest = (isLoggedIn !== true) || forceGuestMode;
@@ -268,7 +264,7 @@ function HomeContent() {
     if (!effectiveGuest) return;
     const next = (guestAnalysisCountRef.current || 0) + 1;
     guestAnalysisCountRef.current = next;
-    if (typeof localStorage !== "undefined") localStorage.setItem(GUEST_COUNT_KEY, String(next));
+    setStoredGuestAnalysisCount(next);
     if (
       !guestGateDismissedRef.current &&
       (
@@ -287,8 +283,10 @@ function HomeContent() {
 
   useEffect(() => {
     setMounted(true);
-    guestAnalysisCountRef.current = getStoredGuestCount();
-    guestGateDismissedRef.current = guestGateDismissedInStorage();
+    const clearedStaleGuestState = clearGuestTrialStateAfterAuthTransition();
+    guestAnalysisCountRef.current = clearedStaleGuestState ? 0 : getStoredGuestAnalysisCount();
+    guestGateDismissedRef.current = clearedStaleGuestState ? false : guestGateDismissedInStorage();
+    if (clearedStaleGuestState) setShowGuestGateModal(false);
   }, []);
 
   useEffect(() => {
