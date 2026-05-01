@@ -21,12 +21,14 @@ export function SiteFooter() {
 
   return (
     <footer
+      className="goshed-site-footer"
       style={{
-        padding: "14px 20px calc(14px + env(safe-area-inset-bottom, 0px))",
+        padding: "9px 20px calc(9px + env(safe-area-inset-bottom, 0px))",
         textAlign: "center",
-        fontSize: "11px",
-        color: "var(--ink-soft)",
+        fontSize: "10px",
+        color: "rgba(107, 91, 69, 0.66)",
         fontFamily: "var(--font-body)",
+        lineHeight: 1.4,
       }}
     >
       © 2026 GoShed ·{" "}

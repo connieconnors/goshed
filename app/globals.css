@@ -44,6 +44,12 @@ body {
   color: var(--ink);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: rgba(139, 111, 71, 0.12);
+}
+
+button,
+a {
+  touch-action: manipulation;
 }
 
 @keyframes goshed-spin {
@@ -76,6 +82,9 @@ body {
   border-color: var(--green);
   color: var(--ink);
 }
+.goshed-secondary-chip:active {
+  transform: scale(0.985);
+}
 
 /* Primary action button (inside recommendation card) */
 .goshed-primary-btn {
@@ -93,10 +102,65 @@ body {
   font-weight: 600;
   cursor: pointer;
   font-family: inherit;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease, opacity 0.15s ease;
 }
 .goshed-primary-btn:hover {
   background: #52634a;
+}
+.goshed-primary-btn:active {
+  transform: scale(0.985);
+}
+.goshed-primary-btn:disabled {
+  opacity: 0.68;
+}
+
+@keyframes goshed-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes goshed-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.goshed-modal-overlay {
+  animation: goshed-overlay-in 160ms ease-out;
+}
+
+.goshed-modal-card {
+  animation: goshed-modal-in 190ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.goshed-site-footer {
+  opacity: 0.76;
+}
+
+.goshed-site-footer a,
+.goshed-site-footer button {
+  transition: color 0.15s ease, opacity 0.15s ease;
+}
+
+.goshed-site-footer a:active,
+.goshed-site-footer button:active {
+  opacity: 0.7;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
 }
 
 @keyframes goshed-decision-flash {

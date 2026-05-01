@@ -1063,7 +1063,7 @@ function HomeContent() {
     flexDirection: "column",
     alignItems: "center",
     boxSizing: "border-box",
-    padding: "56px 20px 24px",
+    padding: "68px 20px 24px",
   };
 
   if (!mounted) {
@@ -1090,16 +1090,16 @@ function HomeContent() {
           }}
         >
           <div>
-            <h1 style={{ fontFamily: 'var(--font-cormorant)', fontSize: '40px', fontWeight: 300, color: 'var(--ink)', lineHeight: 1 }}>
+            <h1 style={{ fontFamily: 'var(--font-cormorant)', fontSize: '36.5px', fontWeight: 300, color: 'var(--ink)', lineHeight: 0.98, margin: 0 }}>
               go<em style={{ color: 'var(--accent)' }}>shed</em>
             </h1>
-            <p style={{ color: 'var(--ink-soft)', fontSize: '12px', letterSpacing: '0.14em', textTransform: 'uppercase', marginTop: '4px' }}>
+            <p style={{ color: 'var(--ink-soft)', fontSize: '11px', letterSpacing: '0.155em', textTransform: 'uppercase', margin: '6px 0 0' }}>
               let it go, beautifully
             </p>
           </div>
-          <div style={{ marginTop: "8px" }}>
+          <div style={{ marginTop: "6px" }}>
             {isLoggedIn === true ? (
-              <Link href="/shed" style={{ fontSize: "12px", color: "var(--ink-soft)", textDecoration: "none", borderBottom: "1px solid var(--soft)", paddingBottom: "1px" }}>
+              <Link href="/shed" style={{ display: "inline-flex", alignItems: "center", minHeight: "32px", fontSize: "12px", color: "var(--ink-soft)", textDecoration: "none", borderBottom: "1px solid var(--soft)", paddingBottom: "1px" }}>
                 My Shed
               </Link>
             ) : (
@@ -1126,6 +1126,8 @@ function HomeContent() {
                   color: "var(--ink-soft)",
                   textDecoration: "none",
                   borderBottom: "1px solid var(--soft)",
+                  minHeight: "32px",
+                  alignItems: "center",
                   paddingBottom: "1px",
                   background: "none",
                   borderTop: "none",
@@ -1136,6 +1138,7 @@ function HomeContent() {
                   paddingTop: 0,
                   cursor: "pointer",
                   fontFamily: "inherit",
+                  display: "inline-flex",
                 }}
               >
                 Sign in
@@ -1160,27 +1163,27 @@ function HomeContent() {
         <div role="button" tabIndex={0} onClick={handleZoneClick}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleZoneClick(); } }}
           className="goshed-photo-slot"
-          style={{ marginTop: '28px', background: 'var(--surface)', borderRadius: '20px', border: '1.5px dashed var(--soft)', height: '280px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', cursor: 'pointer', overflow: 'hidden', position: 'relative' }}>
+          style={{ marginTop: '32px', background: 'var(--surface)', borderRadius: '22px', border: '1.5px dashed var(--soft)', height: 'clamp(238px, 33svh, 252px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px', cursor: 'pointer', overflow: 'hidden', position: 'relative' }}>
           {previewUrl ? (
             <img src={previewUrl} alt="Selected item" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '26px' }} />
           ) : (
             <>
-              <p style={{ fontFamily: 'var(--font-cormorant)', fontSize: '24px', fontStyle: 'italic', color: 'var(--ink)', textAlign: 'center', padding: '0 24px' }}>
+              <p style={{ fontFamily: 'var(--font-cormorant)', fontSize: '24px', fontStyle: 'italic', color: 'var(--ink)', textAlign: 'center', padding: '0 24px', margin: 0, transform: 'translateY(-2px)' }}>
                 What are you holding onto?
               </p>
-              <p style={{ fontSize: '13px', color: 'var(--ink-soft)' }}>Snap a picture — we&apos;ll figure out the rest</p>
+              <p style={{ fontSize: '13px', color: 'var(--ink-soft)', margin: 0, transform: 'translateY(-2px)' }}>Snap a picture — we&apos;ll figure out the rest</p>
             </>
           )}
         </div>
 
         {/* Tagline + pills under the upload box */}
-        <div style={{ marginTop: '28px', textAlign: 'center' }}>
+        <div style={{ marginTop: '24px', textAlign: 'center' }}>
           {isLoggedIn !== null ? (
             <>
               <p style={{ fontFamily: 'var(--font-cormorant)', fontSize: '20px', fontWeight: 300, color: 'var(--ink-soft)', lineHeight: 1.4, margin: 0 }}>
                 GoShed tells you what to do with it.
               </p>
-              <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '14px' }}>
                 {['Sell', 'Donate', 'Gift'].map((label) => (
                   <span
                     key={label}

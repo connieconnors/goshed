@@ -714,6 +714,8 @@ export function PaywallModal({
     signedIn && showPurchaseRow && !purchasing && !yearlyPackage && !monthlyPackage;
   const yearlyPriceLabel = checkoutPriceLabel(yearlyPackage);
   const monthlyPriceLabel = checkoutPriceLabel(monthlyPackage);
+  const yearlyCtaPrice = yearlyPriceLabel ? `${yearlyPriceLabel}/year` : "$24.99/year";
+  const monthlyCtaPrice = monthlyPriceLabel ? `${monthlyPriceLabel}/month` : "$2.99/month";
   const planSummary =
     yearlyPriceLabel && monthlyPriceLabel
       ? `Keep going for ${monthlyPriceLabel} a month — or ${yearlyPriceLabel} for the year.`
@@ -725,6 +727,7 @@ export function PaywallModal({
 
   return (
     <div
+      className="goshed-modal-overlay"
       role="dialog"
       aria-modal="true"
       aria-labelledby="paywall-title"
@@ -736,22 +739,24 @@ export function PaywallModal({
         alignItems: "center",
         justifyContent: "center",
         ...PAYWALL_OVERLAY_SAFE_PADDING,
-        background: "rgba(0,0,0,0.5)",
+        background: "rgba(44,36,22,0.44)",
       }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
+        className="goshed-modal-card"
         style={{
           position: "relative",
           background: "var(--white)",
-          borderRadius: 18,
-          padding: 28,
-          maxWidth: 380,
+          borderRadius: 22,
+          padding: "24px 22px 22px",
+          maxWidth: 360,
           width: "100%",
-          maxHeight: "min(560px, calc(100dvh - 32px))",
+          maxHeight: "min(520px, calc(100dvh - 32px))",
           overflowY: "auto",
           WebkitOverflowScrolling: "touch",
-          boxShadow: "0 8px 32px rgba(44,36,22,0.15)",
+          border: "1px solid rgba(196,168,130,0.32)",
+          boxShadow: "0 18px 54px rgba(44,36,22,0.18)",
           fontFamily: "var(--font-body)",
         }}
         onClick={(e) => e.stopPropagation()}
@@ -762,18 +767,18 @@ export function PaywallModal({
           aria-label="Close"
           style={{
             position: "absolute",
-            top: 8,
-            right: 8,
-            width: 44,
-            height: 44,
+            top: 10,
+            right: 10,
+            width: 36,
+            height: 36,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             padding: 0,
             background: "none",
             border: "none",
-            color: "var(--ink-soft)",
-            fontSize: 22,
+            color: "rgba(107, 91, 69, 0.78)",
+            fontSize: 20,
             lineHeight: 1,
             cursor: "pointer",
             fontFamily: "inherit",
@@ -781,20 +786,34 @@ export function PaywallModal({
         >
           ×
         </button>
+        <p
+          style={{
+            margin: "0 32px 8px",
+            textAlign: "center",
+            color: "var(--accent)",
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: "0.13em",
+            textTransform: "uppercase",
+          }}
+        >
+          GoShed Pro
+        </p>
         <h2
           id="paywall-title"
           style={{
             fontFamily: "var(--font-cormorant)",
-            fontSize: "22px",
+            fontSize: "24px",
             fontWeight: 600,
             color: "var(--ink)",
-            marginTop: 0,
-            marginBottom: 12,
+            margin: "0 28px 8px",
+            textAlign: "center",
+            lineHeight: 1.1,
           }}
         >
           {voluntary ? MOMENT_COPY.paywallTitleVoluntary : MOMENT_COPY.paywallTitle}
         </h2>
-        <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.5, marginBottom: 24 }}>
+        <p style={{ fontSize: 11.75, color: "var(--ink-soft)", lineHeight: 1.35, margin: "0 0 18px", textAlign: "center" }}>
           {planSummary}
         </p>
 
@@ -839,7 +858,7 @@ export function PaywallModal({
                 </button>
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
                 <button
                   type="button"
                   disabled={signedIn ? yearDisabled : false}
@@ -848,11 +867,15 @@ export function PaywallModal({
                   style={{
                     width: "100%",
                     justifyContent: "center",
-                    padding: "14px 20px",
+                    padding: "13px 20px",
+                    minHeight: 48,
+                    borderRadius: 14,
+                    fontSize: 16,
+                    boxShadow: "0 8px 18px rgba(94,113,85,0.18)",
                     cursor: signedIn && yearDisabled ? "not-allowed" : "pointer",
                   }}
                 >
-                  {purchasing ? "Processing…" : `Get the year${yearlyPriceLabel ? ` — ${yearlyPriceLabel}` : ""}`}
+                  {purchasing ? "Processing…" : `Get the year — ${yearlyCtaPrice}`}
                 </button>
                 <button
                   type="button"
@@ -860,40 +883,58 @@ export function PaywallModal({
                   onClick={onMonthClick}
                   style={{
                     width: "100%",
-                    padding: "14px 20px",
-                    background: "transparent",
+                    minHeight: 46,
+                    padding: "12px 20px",
+                    background: "rgba(245,240,232,0.62)",
                     color: "var(--ink)",
-                    border: "1px solid var(--surface2)",
-                    borderRadius: 12,
-                    fontSize: 16,
+                    border: "1px solid rgba(196,168,130,0.58)",
+                    borderRadius: 14,
+                    fontSize: 15,
                     cursor: signedIn && monthDisabled ? "not-allowed" : "pointer",
                     fontFamily: "inherit",
                   }}
                 >
-                  {purchasing ? "Processing…" : `Continue monthly${monthlyPriceLabel ? ` — ${monthlyPriceLabel}` : ""}`}
+                  {purchasing ? "Processing…" : `Continue monthly — ${monthlyCtaPrice}`}
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  disabled={purchasing}
+                  style={{
+                    minHeight: 38,
+                    padding: "6px 12px",
+                    background: "transparent",
+                    color: "rgba(107, 91, 69, 0.86)",
+                    border: "none",
+                    fontSize: 14,
+                    cursor: purchasing ? "not-allowed" : "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  Not now
                 </button>
               </div>
             )}
-            <p style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 8, textAlign: "center", lineHeight: 1.5 }}>
+            <p style={{ fontSize: 11, color: "rgba(107, 91, 69, 0.86)", margin: "4px 0 0", textAlign: "center", lineHeight: 1.5 }}>
               Cancel anytime.
             </p>
-            <p style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 6, textAlign: "center", lineHeight: 1.45 }}>
+            <p style={{ fontSize: 10.5, color: "rgba(107, 91, 69, 0.68)", margin: "5px 2px 0", textAlign: "center", lineHeight: 1.45 }}>
               Subscriptions renew automatically unless canceled at least 24 hours before the end of the current period. Payment is charged to your Apple ID, and you can manage or cancel in App Store account settings.{" "}
-              <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: "var(--ink-soft)", textDecoration: "underline" }}>
+              <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: "rgba(107, 91, 69, 0.82)", textDecoration: "underline" }}>
                 Terms
               </a>
               {" · "}
-              <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: "var(--ink-soft)", textDecoration: "underline" }}>
+              <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: "rgba(107, 91, 69, 0.82)", textDecoration: "underline" }}>
                 Privacy
               </a>
             </p>
             <div
               style={{
-                marginTop: 10,
+                marginTop: 8,
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
-                gap: 6,
+                gap: 5,
               }}
             >
               {!showPromoInput ? (
@@ -904,14 +945,15 @@ export function PaywallModal({
                     background: "none",
                     border: "none",
                     padding: 0,
-                    color: "var(--ink-soft)",
-                    fontSize: 13,
+                    color: "rgba(107, 91, 69, 0.66)",
+                    fontSize: 11.5,
                     cursor: "pointer",
                     textDecoration: "underline",
+                    textUnderlineOffset: 2,
                     fontFamily: "inherit",
                   }}
                 >
-                  Use an invite code
+                  Have an invite code?
                 </button>
               ) : null}
               {signedIn ? (
@@ -926,7 +968,7 @@ export function PaywallModal({
                       border: "none",
                       padding: 0,
                       color: "var(--ink-soft)",
-                      fontSize: 12,
+                      fontSize: 11.5,
                       fontWeight: 400,
                       cursor: restoreDisabled ? "not-allowed" : "pointer",
                       textDecoration: "underline",
@@ -935,7 +977,7 @@ export function PaywallModal({
                   >
                     {restoreLoading ? "Syncing…" : "Restore purchases"}
                   </button>
-                  <p style={{ fontSize: 12, color: "var(--ink-soft)", margin: 0, lineHeight: 1.45 }}>
+                  <p style={{ fontSize: 11, color: "rgba(107, 91, 69, 0.72)", margin: 0, lineHeight: 1.35, textAlign: "center" }}>
                     Already subscribed? Restore your access.
                   </p>
                 </>

@@ -1,11 +1,11 @@
 /* Loaded after globals.css so these beat Tailwind’s emitted rules for the same selectors. */
 @media (max-height: 700px) {
   main.goshed-home-main {
-    padding: 20px 14px !important;
+    padding: 28px 14px 18px !important;
   }
   .goshed-photo-slot {
-    height: min(200px, 40vh) !important;
-    min-height: 160px;
-    margin-top: 18px !important;
+    height: min(208px, 34vh) !important;
+    min-height: 178px;
+    margin-top: 22px !important;
   }
 }
