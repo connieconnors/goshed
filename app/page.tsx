@@ -245,6 +245,7 @@ function HomeContent() {
    */
   const aiConsentAgreedThisSessionRef = useRef(false);
   const [showGuestGateModal, setShowGuestGateModal] = useState(false);
+  const [guestGateCount, setGuestGateCount] = useState(GUEST_ANALYSIS_LIMIT);
   const [shedSignupModalOpen, setShedSignupModalOpen] = useState(false);
   const guestGateDismissedUntilCountRef = useRef(getGuestGateDismissedUntilCount());
   const guestAnalysisCountRef = useRef(getStoredGuestAnalysisCount());
@@ -262,17 +263,23 @@ function HomeContent() {
 
   const recordGuestFlowComplete = useCallback(() => {
     if (!effectiveGuest) return;
-    const next = (guestAnalysisCountRef.current || 0) + 1;
+    const previous = guestAnalysisCountRef.current || 0;
+    const next = previous + 1;
     guestAnalysisCountRef.current = next;
     setStoredGuestAnalysisCount(next);
-    if (
-      next > guestGateDismissedUntilCountRef.current &&
-      (
-        next === GUEST_ANALYSIS_LIMIT ||
-        next === GUEST_GATE_REMINDER_COUNT ||
-        next === FREE_LOGGED_IN_ITEM_LIMIT
-      )
-    ) {
+
+    const dismissedUntil = guestGateDismissedUntilCountRef.current;
+    const milestone =
+      previous < FREE_LOGGED_IN_ITEM_LIMIT && next >= FREE_LOGGED_IN_ITEM_LIMIT && FREE_LOGGED_IN_ITEM_LIMIT > dismissedUntil
+        ? FREE_LOGGED_IN_ITEM_LIMIT
+        : previous < GUEST_GATE_REMINDER_COUNT && next >= GUEST_GATE_REMINDER_COUNT && GUEST_GATE_REMINDER_COUNT > dismissedUntil
+          ? GUEST_GATE_REMINDER_COUNT
+          : previous < GUEST_ANALYSIS_LIMIT && next >= GUEST_ANALYSIS_LIMIT && GUEST_ANALYSIS_LIMIT > dismissedUntil
+            ? GUEST_ANALYSIS_LIMIT
+            : null;
+
+    if (milestone !== null) {
+      setGuestGateCount(milestone);
       setShowGuestGateModal(true);
     }
   }, [effectiveGuest]);
@@ -596,6 +603,7 @@ function HomeContent() {
       guestAnalysisCountRef.current > guestGateDismissedUntilCountRef.current
     ) {
       e.target.value = '';
+      setGuestGateCount(guestAnalysisCountRef.current);
       setShowGuestGateModal(true);
       return;
     }
@@ -1054,6 +1062,25 @@ function HomeContent() {
     fontFamily: 'inherit',
     lineHeight: 1.45,
   };
+  const guestGateBody =
+    guestGateCount >= FREE_LOGGED_IN_ITEM_LIMIT
+      ? `Create an account to save your first ${FREE_LOGGED_IN_ITEM_LIMIT} items, then choose a plan to keep going. Already have an account? Sign in and upgrade.`
+      : guestGateCount >= GUEST_GATE_REMINDER_COUNT
+        ? `Create a free account now so your first ${FREE_LOGGED_IN_ITEM_LIMIT} items are saved.`
+        : MOMENT_COPY.guestGateBody;
+  const guestGateTitle =
+    guestGateCount >= FREE_LOGGED_IN_ITEM_LIMIT
+      ? "You've filled your free shed."
+      : guestGateCount >= GUEST_GATE_REMINDER_COUNT
+        ? "One item left in your free shed."
+        : "Keep your shed.";
+  const guestGatePrimaryCta = guestGateCount >= FREE_LOGGED_IN_ITEM_LIMIT ? "Create account to continue" : "Create a free account";
+  const showGuestGateSignInCta = guestGateCount >= FREE_LOGGED_IN_ITEM_LIMIT;
+  const guestGateIsHardLimit = guestGateCount >= FREE_LOGGED_IN_ITEM_LIMIT;
+  const guestGateAuthRedirect = encodeURIComponent("/?paywall=1");
+  const guestGateCreateAccountHref = guestGateIsHardLimit ? `/set-password?redirect=${guestGateAuthRedirect}` : "/set-password";
+  const guestGateSignInHref = `/login?redirect=${guestGateAuthRedirect}`;
+  const guestGateAlreadyAccountLabel = isLoggedIn === true ? "Continue to plans" : "I already have an account";
 
   // Defer full UI until after mount so server and client render identical HTML and hydration never mismatches (e.g. with extensions that alter the DOM).
   const homeShellStyle: CSSProperties = {
@@ -1765,7 +1792,7 @@ function HomeContent() {
           }}
           onClick={(e) => {
             if (e.target === e.currentTarget) {
-              setShowGuestGateModal(false);
+              if (!guestGateIsHardLimit) setShowGuestGateModal(false);
             }
           }}
         >
@@ -1782,14 +1809,14 @@ function HomeContent() {
             onClick={(e) => e.stopPropagation()}
           >
             <h2 id="guest-gate-title" style={{ fontFamily: "var(--font-cormorant)", fontSize: "22px", fontWeight: 600, color: "var(--ink)", marginTop: 0, marginBottom: 12 }}>
-              Keep your shed.
+              {guestGateTitle}
             </h2>
             <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.5, marginBottom: 24 }}>
-              {MOMENT_COPY.guestGateBody}
+              {guestGateBody}
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <Link
-                href="/set-password"
+                href={guestGateCreateAccountHref}
                 onClick={() => {
                   setShowGuestGateModal(false);
                 }}
@@ -1807,29 +1834,62 @@ function HomeContent() {
                   boxSizing: "border-box",
                 }}
               >
-                Create a free account
+                {guestGatePrimaryCta}
               </Link>
-              <button
-                type="button"
-                onClick={() => {
-                  guestGateDismissedUntilCountRef.current = guestAnalysisCountRef.current;
-                  markGuestGateDismissedUntilCount(guestAnalysisCountRef.current);
-                  setShowGuestGateModal(false);
-                }}
-                style={{
-                  width: "100%",
-                  padding: "14px 20px",
-                  background: "transparent",
-                  color: "var(--ink-soft)",
-                  border: "1px solid var(--surface2)",
-                  borderRadius: 12,
-                  fontSize: 16,
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                }}
-              >
-                Not now
-              </button>
+              {showGuestGateSignInCta ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowGuestGateModal(false);
+                    if (isLoggedIn === true) {
+                      setPaywallVoluntary(false);
+                      setPaywallItemCount(FREE_LOGGED_IN_ITEM_LIMIT);
+                      setShowPaywallModal(true);
+                      return;
+                    }
+                    void router.push(guestGateSignInHref);
+                  }}
+                  style={{
+                    width: "100%",
+                    padding: "14px 20px",
+                    background: "transparent",
+                    color: "var(--ink)",
+                    border: "1px solid var(--surface2)",
+                    borderRadius: 12,
+                    fontSize: 16,
+                    fontWeight: 500,
+                    textAlign: "center",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    boxSizing: "border-box",
+                  }}
+                >
+                  {guestGateAlreadyAccountLabel}
+                </button>
+              ) : null}
+              {!guestGateIsHardLimit ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    guestGateDismissedUntilCountRef.current = guestAnalysisCountRef.current;
+                    markGuestGateDismissedUntilCount(guestAnalysisCountRef.current);
+                    setShowGuestGateModal(false);
+                  }}
+                  style={{
+                    width: "100%",
+                    padding: "14px 20px",
+                    background: "transparent",
+                    color: "var(--ink-soft)",
+                    border: "1px solid var(--surface2)",
+                    borderRadius: 12,
+                    fontSize: 16,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  Not now
+                </button>
+              ) : null}
             </div>
           </div>
         </div>
