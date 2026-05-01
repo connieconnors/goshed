@@ -2,9 +2,22 @@
 
 import { useState, useEffect, useCallback, useRef, type CSSProperties } from "react";
 import { MOMENT_COPY } from "@/lib/momentCopy";
-import { FREE_LOGGED_IN_ITEM_LIMIT } from "@/lib/freeTier";
 import { useAuthSession } from "@/lib/auth-session-context";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
+import {
+  ensureNativeIosPurchasesConfigured,
+  getNativeIosOfferings,
+  getNativePackagePriceLabel,
+  getNativePackageProductIdentifier,
+  hasNativeIosRevenueCatKey,
+  isNativeIosPurchasesAvailable,
+  purchaseNativeIosPackage,
+  resolveNativeSubscriptionPackage,
+  restoreNativeIosPurchases,
+  revenueCatErrorMessage,
+  summarizeNativeOfferings,
+  type NativeRevenueCatPackage,
+} from "@/lib/revenuecat-purchases";
 import { PackageType, Purchases } from "@revenuecat/purchases-js";
 import type { Offering, Package, Offerings } from "@revenuecat/purchases-js";
 
@@ -19,7 +32,14 @@ type PaywallModalProps = {
   beforeGuestPurchase?: () => Promise<void>;
 };
 
-const API_KEY = process.env.NEXT_PUBLIC_REVENUECAT_API_KEY ?? "";
+const WEB_API_KEY =
+  process.env.NEXT_PUBLIC_REVENUECAT_WEB_API_KEY?.trim() ||
+  process.env.NEXT_PUBLIC_REVENUECAT_API_KEY?.trim() ||
+  "";
+
+type CheckoutPackage =
+  | { source: "web"; plan: "monthly" | "annual"; webPackage: Package }
+  | { source: "native-ios"; plan: "monthly" | "annual"; nativePackage: NativeRevenueCatPackage };
 
 /** Modal-only safe padding (does not touch global layout freeze). */
 const PAYWALL_OVERLAY_SAFE_PADDING: Pick<
@@ -62,17 +82,36 @@ function summarizeOfferings(offerings: Offerings) {
   };
 }
 
+function checkoutPackageIdentifier(pkg: CheckoutPackage | null): string | null {
+  if (!pkg) return null;
+  if (pkg.source === "native-ios") return pkg.nativePackage.identifier;
+  return pkg.webPackage.identifier;
+}
+
+function checkoutProductIdentifier(pkg: CheckoutPackage | null): string | null {
+  if (!pkg) return null;
+  if (pkg.source === "native-ios") return getNativePackageProductIdentifier(pkg.nativePackage);
+  return pkg.webPackage.webBillingProduct?.identifier ?? pkg.webPackage.rcBillingProduct?.identifier ?? null;
+}
+
+function checkoutPriceLabel(pkg: CheckoutPackage | null): string | null {
+  if (!pkg) return null;
+  if (pkg.source === "native-ios") return getNativePackagePriceLabel(pkg.nativePackage);
+  const product = pkg.webPackage.webBillingProduct ?? pkg.webPackage.rcBillingProduct;
+  return product?.currentPrice?.formattedPrice ?? null;
+}
+
 export function PaywallModal({
   open,
   onClose,
   onPurchaseSuccess,
-  itemCount: _itemCount = FREE_LOGGED_IN_ITEM_LIMIT,
   voluntary = false,
   beforeGuestPurchase,
 }: PaywallModalProps) {
   const [userId, setUserId] = useState<string | null>(null);
-  const [monthlyPackage, setMonthlyPackage] = useState<Package | null>(null);
-  const [yearlyPackage, setYearlyPackage] = useState<Package | null>(null);
+  const [monthlyPackage, setMonthlyPackage] = useState<CheckoutPackage | null>(null);
+  const [yearlyPackage, setYearlyPackage] = useState<CheckoutPackage | null>(null);
+  const [billingRuntime, setBillingRuntime] = useState<"web" | "native-ios">("web");
   const [plansLoading, setPlansLoading] = useState(false);
   const [plansSettled, setPlansSettled] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
@@ -113,8 +152,8 @@ export function PaywallModal({
     setOfferingsRetryNonce((n) => n + 1);
   }, []);
 
-  const ensureConfigured = useCallback(async (appUserId: string): Promise<boolean> => {
-    if (!API_KEY) return false;
+  const ensureWebConfigured = useCallback(async (appUserId: string): Promise<boolean> => {
+    if (!WEB_API_KEY) return false;
     try {
       if (Purchases.isConfigured()) {
         const current = Purchases.getSharedInstance();
@@ -122,13 +161,46 @@ export function PaywallModal({
           await current.changeUser(appUserId);
         }
       } else {
-        Purchases.configure({ apiKey: API_KEY, appUserId });
+        Purchases.configure({ apiKey: WEB_API_KEY, appUserId });
       }
       return true;
     } catch {
       return false;
     }
   }, []);
+
+  const loadPackageForPlan = useCallback(
+    async (uid: string, plan: "monthly" | "annual") => {
+      if (await isNativeIosPurchasesAvailable()) {
+        if (!hasNativeIosRevenueCatKey()) return null;
+        const configured = await ensureNativeIosPurchasesConfigured(uid);
+        if (!configured) return null;
+        const offerings = await getNativeIosOfferings();
+        const monthly = resolveNativeSubscriptionPackage(offerings, "monthly");
+        const yearly = resolveNativeSubscriptionPackage(offerings, "annual");
+        setBillingRuntime("native-ios");
+        setMonthlyPackage(monthly ? { source: "native-ios", plan: "monthly", nativePackage: monthly } : null);
+        setYearlyPackage(yearly ? { source: "native-ios", plan: "annual", nativePackage: yearly } : null);
+        const selected = plan === "annual" ? yearly : monthly;
+        return selected ? { source: "native-ios" as const, plan, nativePackage: selected } : null;
+      }
+
+      if (!WEB_API_KEY.trim()) return null;
+      const configured = await ensureWebConfigured(uid);
+      if (!configured) return null;
+      const purchases = Purchases.getSharedInstance();
+      const offerings: Offerings = await purchases.getOfferings();
+      const curOffering = offerings.current;
+      const monthly = resolveSubscriptionPackage(curOffering, "monthly");
+      const yearly = resolveSubscriptionPackage(curOffering, "annual");
+      setBillingRuntime("web");
+      setMonthlyPackage(monthly ? { source: "web", plan: "monthly", webPackage: monthly } : null);
+      setYearlyPackage(yearly ? { source: "web", plan: "annual", webPackage: yearly } : null);
+      const selected = plan === "annual" ? yearly : monthly;
+      return selected ? { source: "web" as const, plan, webPackage: selected } : null;
+    },
+    [ensureWebConfigured]
+  );
 
   useEffect(() => {
     if (!open) {
@@ -173,6 +245,8 @@ export function PaywallModal({
     };
 
     const run = async () => {
+      const useNativeIos = await isNativeIosPurchasesAvailable();
+      if (!cancelled) setBillingRuntime(useNativeIos ? "native-ios" : "web");
       setPlansSettled(false);
       setPlansLoading(true);
       setMonthlyPackage(null);
@@ -191,18 +265,28 @@ export function PaywallModal({
         return;
       }
 
-      if (!API_KEY.trim()) {
-        lastOfferingsSnapshotRef.current = { reason: "missing_NEXT_PUBLIC_REVENUECAT_API_KEY" };
-        console.warn("[PaywallModal] Billing key missing — set NEXT_PUBLIC_REVENUECAT_API_KEY", lastOfferingsSnapshotRef.current);
+      if (useNativeIos && !hasNativeIosRevenueCatKey()) {
+        lastOfferingsSnapshotRef.current = { reason: "missing_NEXT_PUBLIC_REVENUECAT_IOS_API_KEY" };
+        console.warn("[PaywallModal] Native iOS billing key missing — set NEXT_PUBLIC_REVENUECAT_IOS_API_KEY", lastOfferingsSnapshotRef.current);
         setPlansIssueMessage("Subscription options aren’t available in this version of the app. Try again later or choose “Use an invite code” below.");
         finish();
         return;
       }
 
-      const ok = await ensureConfigured(uid);
+      if (!useNativeIos && !WEB_API_KEY.trim()) {
+        lastOfferingsSnapshotRef.current = { reason: "missing_NEXT_PUBLIC_REVENUECAT_WEB_API_KEY" };
+        console.warn("[PaywallModal] Billing key missing — set NEXT_PUBLIC_REVENUECAT_WEB_API_KEY", lastOfferingsSnapshotRef.current);
+        setPlansIssueMessage("Subscription options aren’t available in this version of the app. Try again later or choose “Use an invite code” below.");
+        finish();
+        return;
+      }
+
+      const ok = useNativeIos
+        ? await ensureNativeIosPurchasesConfigured(uid)
+        : await ensureWebConfigured(uid);
       if (cancelled) return;
       if (!ok) {
-        lastOfferingsSnapshotRef.current = { reason: "Purchases.configure_or_changeUser_failed" };
+        lastOfferingsSnapshotRef.current = { reason: useNativeIos ? "NativePurchases.configure_or_logIn_failed" : "Purchases.configure_or_changeUser_failed" };
         console.warn("[PaywallModal] RevenueCat configure failed:", lastOfferingsSnapshotRef.current);
         setPlansIssueMessage("Couldn’t connect to billing. Check your connection and tap Try again.");
         finish();
@@ -224,8 +308,35 @@ export function PaywallModal({
       }, OFFERINGS_TIMEOUT_MS);
 
       try {
-        const purchases = Purchases.getSharedInstance();
-        const offerings: Offerings = await purchases.getOfferings();
+        if (useNativeIos) {
+          const offerings = await getNativeIosOfferings();
+          clearTimeout(timeoutId);
+          if (cancelled) return;
+          const monthly = resolveNativeSubscriptionPackage(offerings, "monthly");
+          const yearly = resolveNativeSubscriptionPackage(offerings, "annual");
+          const summary = summarizeNativeOfferings(offerings);
+          lastOfferingsSnapshotRef.current = {
+            ...summary,
+            annualPackageFound: !!yearly,
+            monthlyPackageFound: !!monthly,
+          };
+          console.log("[PaywallModal] RevenueCat getOfferings:", lastOfferingsSnapshotRef.current);
+          setMonthlyPackage(monthly ? { source: "native-ios", plan: "monthly", nativePackage: monthly } : null);
+          setYearlyPackage(yearly ? { source: "native-ios", plan: "annual", nativePackage: yearly } : null);
+          if (!monthly && !yearly) {
+            console.warn("[PaywallModal] No monthly/annual package on current offering — check RC dashboard package types ($rc_monthly / $rc_annual or matching types).", summary);
+            setPlansIssueMessage(
+              process.env.NODE_ENV === "development"
+                ? `No monthly/annual packages found. Current offering: ${summary.currentOfferingIdentifier ?? "none"}. Packages: ${summary.currentAvailablePackageIdentifiers.join(", ") || "none"}.`
+                : "We couldn’t load subscription plans. Tap Try again, or choose “Use an invite code” if you have one."
+            );
+          } else {
+            setPlansIssueMessage(null);
+          }
+          return;
+        }
+
+        const offerings = await Purchases.getSharedInstance().getOfferings();
         clearTimeout(timeoutId);
         if (cancelled) return;
         const current = offerings.current;
@@ -233,18 +344,19 @@ export function PaywallModal({
         const yearly = resolveSubscriptionPackage(current, "annual");
         const summary = summarizeOfferings(offerings);
         lastOfferingsSnapshotRef.current = {
-          source: "getOfferings_ok",
           ...summary,
           annualPackageFound: !!yearly,
           monthlyPackageFound: !!monthly,
         };
         console.log("[PaywallModal] RevenueCat getOfferings:", lastOfferingsSnapshotRef.current);
-        setMonthlyPackage(monthly);
-        setYearlyPackage(yearly);
+        setMonthlyPackage(monthly ? { source: "web", plan: "monthly", webPackage: monthly } : null);
+        setYearlyPackage(yearly ? { source: "web", plan: "annual", webPackage: yearly } : null);
         if (!monthly && !yearly) {
           console.warn("[PaywallModal] No monthly/annual package on current offering — check RC dashboard package types ($rc_monthly / $rc_annual or matching types).", summary);
           setPlansIssueMessage(
-            "We couldn’t load subscription plans. Tap Try again, or choose “Use an invite code” if you have one."
+            process.env.NODE_ENV === "development"
+              ? `No monthly/annual packages found. Current offering: ${summary.currentOfferingIdentifier ?? "none"}. Packages: ${summary.currentAvailablePackageIdentifiers.join(", ") || "none"}.`
+              : "We couldn’t load subscription plans. Tap Try again, or choose “Use an invite code” if you have one."
           );
         } else {
           setPlansIssueMessage(null);
@@ -261,7 +373,9 @@ export function PaywallModal({
         setMonthlyPackage(null);
         setYearlyPackage(null);
         setPlansIssueMessage(
-          "We couldn’t load subscription options. Check your connection, tap Try again, or choose “Use an invite code” below."
+          process.env.NODE_ENV === "development"
+            ? `RevenueCat getOfferings failed: ${message}`
+            : "We couldn’t load subscription options. Check your connection, tap Try again, or choose “Use an invite code” below."
         );
       } finally {
         if (!cancelled) clearTimeout(timeoutId);
@@ -273,21 +387,24 @@ export function PaywallModal({
     return () => {
       cancelled = true;
     };
-  }, [open, ensureConfigured, refresh, offeringsRetryNonce]);
+  }, [open, ensureWebConfigured, refresh, offeringsRetryNonce]);
 
   const handlePurchase = useCallback(
-    async (pkg: Package | null) => {
+    async (pkg: CheckoutPackage | null) => {
       if (!pkg || purchasing) return;
       setPurchaseError(null);
       setPurchasing(true);
       try {
-        const purchases = Purchases.getSharedInstance();
-        await purchases.purchase({ rcPackage: pkg });
+        if (pkg.source === "native-ios") {
+          await purchaseNativeIosPackage(pkg.nativePackage);
+        } else {
+          const purchases = Purchases.getSharedInstance();
+          await purchases.purchase({ rcPackage: pkg.webPackage });
+        }
         onClose();
         onPurchaseSuccess?.();
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "Purchase failed. Try again.";
-        setPurchaseError(message);
+        setPurchaseError(revenueCatErrorMessage(err, "Purchase failed. Try again."));
       } finally {
         setPurchasing(false);
       }
@@ -411,33 +528,27 @@ export function PaywallModal({
 
       await beforeGuestPurchase?.();
 
-      if (!API_KEY.trim()) {
+      if (billingRuntime === "native-ios" && !hasNativeIosRevenueCatKey()) {
         setUpgradeNudgeError("Subscription checkout isn’t available in this version. Try again later.");
         return;
       }
 
-      const configured = await ensureConfigured(uid);
-      if (!configured) {
-        setUpgradeNudgeError("Could not connect billing. Try again.");
+      if (billingRuntime === "web" && !WEB_API_KEY.trim()) {
+        setUpgradeNudgeError("Subscription checkout isn’t available in this version. Try again later.");
         return;
       }
 
-      const purchases = Purchases.getSharedInstance();
-      let offerings: Offerings;
+      let pkg: CheckoutPackage | null;
       try {
-        offerings = await purchases.getOfferings();
-      } catch {
-        setUpgradeNudgeError("Could not load plans. Try again.");
+        pkg = await loadPackageForPlan(uid, plan);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        setUpgradeNudgeError(
+          process.env.NODE_ENV === "development" ? `Could not load plans: ${message}` : "Could not load plans. Try again."
+        );
         return;
       }
-
-      const curOffering = offerings.current;
-      const pkg =
-        plan === "annual"
-          ? resolveSubscriptionPackage(curOffering, "annual")
-          : resolveSubscriptionPackage(curOffering, "monthly");
       if (!pkg) {
-        console.warn("[PaywallModal] Post–nudge checkout: no package for plan", plan, summarizeOfferings(offerings));
         setUpgradeNudgeError(
           "That plan couldn’t be loaded. Close this window and tap Try again on the subscription screen."
         );
@@ -446,14 +557,12 @@ export function PaywallModal({
 
       pendingUpgradePlanRef.current = null;
       pendingUpgradeUserIdRef.current = null;
-      setMonthlyPackage(resolveSubscriptionPackage(curOffering, "monthly"));
-      setYearlyPackage(resolveSubscriptionPackage(curOffering, "annual"));
       setUpgradeNudgeModalOpen(false);
       await handlePurchase(pkg);
     } finally {
       setUpgradeNudgeSubmitting(false);
     }
-  }, [upgradeNudgeConsentChecked, beforeGuestPurchase, ensureConfigured, handlePurchase]);
+  }, [upgradeNudgeConsentChecked, beforeGuestPurchase, billingRuntime, loadPackageForPlan, handlePurchase]);
 
   const handleApplyPromo = useCallback(async () => {
     const code = promoCode.trim();
@@ -496,11 +605,14 @@ export function PaywallModal({
       purchasing,
       annualPackageFound: !!yearlyPackage,
       monthlyPackageFound: !!monthlyPackage,
-      yearlyPackageIdentifier: yearlyPackage?.identifier ?? null,
-      monthlyPackageIdentifier: monthlyPackage?.identifier ?? null,
+      billingRuntime,
+      yearlyPackageIdentifier: checkoutPackageIdentifier(yearlyPackage),
+      monthlyPackageIdentifier: checkoutPackageIdentifier(monthlyPackage),
+      yearlyProductIdentifier: checkoutProductIdentifier(yearlyPackage),
+      monthlyProductIdentifier: checkoutProductIdentifier(monthlyPackage),
       lastRevenueCatSnapshot: lastOfferingsSnapshotRef.current,
     });
-  }, [open, userId, plansSettled, plansLoading, yearlyPackage, monthlyPackage, purchasing]);
+  }, [open, userId, plansSettled, plansLoading, yearlyPackage, monthlyPackage, purchasing, billingRuntime]);
 
   useEffect(() => {
     if (!open) return;
@@ -541,12 +653,16 @@ export function PaywallModal({
     setRestoreLoading(true);
     setRestoreMessage(null);
     try {
-      if (!API_KEY.trim() || !Purchases.isConfigured()) {
-        setRestoreMessage("Billing isn’t available right now. Try again later.");
-        return;
+      if (billingRuntime === "native-ios") {
+        await restoreNativeIosPurchases(userId);
+      } else {
+        if (!WEB_API_KEY.trim() || !Purchases.isConfigured()) {
+          setRestoreMessage("Billing isn’t available right now. Try again later.");
+          return;
+        }
+        const purchases = Purchases.getSharedInstance();
+        await purchases.getCustomerInfo();
       }
-      const purchases = Purchases.getSharedInstance();
-      await purchases.getCustomerInfo();
       const snap = await refresh();
       if (snap.isPro) {
         setRestoreMessage("GoShed Pro is active on this account.");
@@ -560,7 +676,7 @@ export function PaywallModal({
     } finally {
       setRestoreLoading(false);
     }
-  }, [userId, restoreLoading, refresh, onPurchaseSuccess, onClose]);
+  }, [userId, restoreLoading, billingRuntime, refresh, onPurchaseSuccess, onClose]);
 
   if (!open) return null;
 
@@ -596,6 +712,16 @@ export function PaywallModal({
   const monthDisabled = purchasing || !monthlyPackage;
   const signedInPlansMissing =
     signedIn && showPurchaseRow && !purchasing && !yearlyPackage && !monthlyPackage;
+  const yearlyPriceLabel = checkoutPriceLabel(yearlyPackage);
+  const monthlyPriceLabel = checkoutPriceLabel(monthlyPackage);
+  const planSummary =
+    yearlyPriceLabel && monthlyPriceLabel
+      ? `Keep going for ${monthlyPriceLabel} a month — or ${yearlyPriceLabel} for the year.`
+      : "Choose a plan to keep going with unlimited items.";
+  const restoreDisabled =
+    restoreLoading ||
+    purchasing ||
+    (billingRuntime === "native-ios" ? !hasNativeIosRevenueCatKey() : !WEB_API_KEY.trim());
 
   return (
     <div
@@ -669,7 +795,7 @@ export function PaywallModal({
           {voluntary ? MOMENT_COPY.paywallTitleVoluntary : MOMENT_COPY.paywallTitle}
         </h2>
         <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.5, marginBottom: 24 }}>
-          Keep going for $2.99 a month — or $24.99 for the year.
+          {planSummary}
         </p>
 
         {showPlansSpinner ? (
@@ -726,7 +852,7 @@ export function PaywallModal({
                     cursor: signedIn && yearDisabled ? "not-allowed" : "pointer",
                   }}
                 >
-                  {purchasing ? "Processing…" : "Get the year — $24.99"}
+                  {purchasing ? "Processing…" : `Get the year${yearlyPriceLabel ? ` — ${yearlyPriceLabel}` : ""}`}
                 </button>
                 <button
                   type="button"
@@ -744,12 +870,22 @@ export function PaywallModal({
                     fontFamily: "inherit",
                   }}
                 >
-                  {purchasing ? "Processing…" : "Continue — $2.99/month"}
+                  {purchasing ? "Processing…" : `Continue monthly${monthlyPriceLabel ? ` — ${monthlyPriceLabel}` : ""}`}
                 </button>
               </div>
             )}
             <p style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 8, textAlign: "center", lineHeight: 1.5 }}>
               Cancel anytime.
+            </p>
+            <p style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 6, textAlign: "center", lineHeight: 1.45 }}>
+              Subscriptions renew automatically unless canceled at least 24 hours before the end of the current period. Payment is charged to your Apple ID, and you can manage or cancel in App Store account settings.{" "}
+              <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: "var(--ink-soft)", textDecoration: "underline" }}>
+                Terms
+              </a>
+              {" · "}
+              <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: "var(--ink-soft)", textDecoration: "underline" }}>
+                Privacy
+              </a>
             </p>
             <div
               style={{
@@ -782,7 +918,7 @@ export function PaywallModal({
                 <>
                   <button
                     type="button"
-                    disabled={restoreLoading || purchasing || !API_KEY.trim()}
+                    disabled={restoreDisabled}
                     onClick={() => void handleRefreshSubscriptionStatus()}
                     aria-label="Restore purchases: sync subscription status with billing for this account"
                     style={{
@@ -792,7 +928,7 @@ export function PaywallModal({
                       color: "var(--ink-soft)",
                       fontSize: 12,
                       fontWeight: 400,
-                      cursor: restoreLoading || purchasing || !API_KEY.trim() ? "not-allowed" : "pointer",
+                      cursor: restoreDisabled ? "not-allowed" : "pointer",
                       textDecoration: "underline",
                       fontFamily: "inherit",
                     }}
@@ -1001,7 +1137,7 @@ export function PaywallModal({
                 }}
               />
               <span style={{ fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.45 }}>
-                Email me occasionally — I declutter better with a nudge
+                Check the box for an occasional nudge to keep clearing your shed.
               </span>
             </label>
             {guestSignupError ? (
@@ -1154,7 +1290,7 @@ export function PaywallModal({
                 }}
               />
               <span style={{ fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.45 }}>
-                Email me occasionally — I declutter better with a nudge
+                Check the box for an occasional nudge to keep clearing your shed.
               </span>
             </label>
             {upgradeNudgeError ? (

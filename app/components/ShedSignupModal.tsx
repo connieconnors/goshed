@@ -37,7 +37,6 @@ export function ShedSignupModal({ open, onClose }: Props) {
   const [notificationConsent, setNotificationConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sentConfirmEmail, setSentConfirmEmail] = useState(false);
 
   const emailNorm = email.trim().toLowerCase();
 
@@ -47,7 +46,6 @@ export function ShedSignupModal({ open, onClose }: Props) {
       setConfirm("");
       setNotificationConsent(false);
       setError(null);
-      setSentConfirmEmail(false);
       setSubmitting(false);
       return;
     }
@@ -82,41 +80,48 @@ export function ShedSignupModal({ open, onClose }: Props) {
     setSubmitting(true);
     try {
       const supabase = createSupabaseBrowserClient();
-      const { data, error: signErr } = await supabase.auth.signUp({
+      const res = await fetch("/api/auth/upgrade-signup", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: emailNorm, password: p }),
+      });
+      const signupBody = (await res.json().catch(() => ({}))) as {
+        error?: unknown;
+        code?: unknown;
+      };
+      const created = res.ok;
+      const already = res.status === 409 && signupBody.code === "already_registered";
+      if (!created && !already) {
+        setError(typeof signupBody.error === "string" ? signupBody.error : "Could not create account. Try again.");
+        return;
+      }
+
+      const { error: signErr } = await supabase.auth.signInWithPassword({
         email: emailNorm,
         password: p,
-        options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
       });
       if (signErr) {
-        const msg = signErr.message?.toLowerCase() ?? "";
-        if (msg.includes("already registered") || msg.includes("already been registered")) {
-          setError("That email already has an account — sign in below.");
-        } else {
-          setError(signErr.message || "Could not create account. Try again.");
-        }
+        setError(signErr.message || "Could not sign in. Check your password.");
         return;
       }
       localStorage.setItem(LAST_LOGIN_EMAIL_KEY, emailNorm);
-      if (data.session) {
-        const pr = await fetch("/api/auth/password-set", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ notificationConsent }),
-        });
-        if (!pr.ok) {
-          const pb = await pr.json().catch(() => ({}));
-          setError(typeof pb?.error === "string" ? pb.error : "Account created but profile could not be saved. Try signing in.");
-          return;
-        }
-        addEmailWithPassword(emailNorm);
-        await refreshAuthSession();
-        router.push("/shed");
-        router.refresh();
-        onClose();
+      const pr = await fetch("/api/auth/password-set", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notificationConsent }),
+      });
+      if (!pr.ok) {
+        const pb = await pr.json().catch(() => ({}));
+        setError(typeof pb?.error === "string" ? pb.error : "Account created but profile could not be saved. Try signing in.");
         return;
       }
-      setSentConfirmEmail(true);
+      addEmailWithPassword(emailNorm);
+      await refreshAuthSession();
+      router.push("/shed");
+      router.refresh();
+      onClose();
     } catch {
       setError("Something went wrong. Try again.");
     } finally {
@@ -189,46 +194,7 @@ export function ShedSignupModal({ open, onClose }: Props) {
         >
           ×
         </button>
-        {sentConfirmEmail ? (
-          <>
-            <h2
-              id="shed-signup-title"
-              style={{
-                fontFamily: "var(--font-display)",
-                fontSize: 22,
-                fontWeight: 600,
-                marginTop: 0,
-                marginBottom: 12,
-                color: "var(--ink)",
-              }}
-            >
-              Confirm your email
-            </h2>
-            <p style={{ fontSize: 14, color: "var(--ink-soft)", lineHeight: 1.55, marginBottom: 20 }}>
-              We sent a link to <strong style={{ color: "var(--ink)" }}>{emailNorm}</strong>. Open it to finish setting up your account, then you&apos;ll be able to open your Shed.
-            </p>
-            <Link
-              href="/login?redirect=/shed"
-              onClick={onClose}
-              style={{
-                display: "block",
-                width: "100%",
-                padding: "12px 16px",
-                textAlign: "center",
-                background: "var(--green)",
-                color: "#fff",
-                borderRadius: 999,
-                fontSize: 15,
-                fontWeight: 600,
-                textDecoration: "none",
-                boxSizing: "border-box",
-              }}
-            >
-              Back to sign in
-            </Link>
-          </>
-        ) : (
-          <>
+        <>
             <h2
               id="shed-signup-title"
               style={{
@@ -272,7 +238,7 @@ export function ShedSignupModal({ open, onClose }: Props) {
                 }}
               />
               <span style={{ fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.45 }}>
-                Email me occasionally — I declutter better with a nudge
+                Check the box for an occasional nudge to keep clearing your shed.
               </span>
             </label>
             {error ? (
@@ -391,8 +357,7 @@ export function ShedSignupModal({ open, onClose }: Props) {
             >
               Cancel
             </button>
-          </>
-        )}
+        </>
       </div>
     </div>
   );

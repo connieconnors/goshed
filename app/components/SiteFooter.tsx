@@ -38,7 +38,7 @@ export function SiteFooter() {
         Terms
       </a>
       {" · "}
-      <a href="mailto:support@thriftshopper.com" style={linkStyle}>
+      <a href="/privacy#contact" style={linkStyle}>
         Contact
       </a>
       {" · "}

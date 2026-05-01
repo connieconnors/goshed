@@ -73,7 +73,7 @@ function LoginForm() {
       const { error } = await supabase.auth.signInWithPassword({ email: emailNorm, password });
       if (error) {
         setSignInError(
-          "Can't find that combination. If you signed in with a link before, use Forgot password to set a password."
+          "Can't find that email and password. Use Forgot password to reset it, or create an account."
         );
         return;
       }
@@ -146,7 +146,7 @@ function LoginForm() {
   return (
     <div
       style={{
-        padding: 40,
+        padding: "56px 40px 40px",
         maxWidth: 400,
         margin: "0 auto",
         fontFamily: "inherit",

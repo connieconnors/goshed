@@ -245,7 +245,7 @@ export default function ShedPage() {
         }
       `}</style>
       <div style={{ maxWidth: "560px", margin: "0 auto", padding: "0 1.25rem" }}>
-        <div style={{ padding: "48px 0 0", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div style={{ padding: "60px 0 0", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div>
             <Link
               href="/"

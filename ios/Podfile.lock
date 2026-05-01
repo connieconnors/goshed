@@ -77,6 +77,8 @@ PODS:
   - hermes-engine (0.14.1):
     - hermes-engine/Pre-built (= 0.14.1)
   - hermes-engine/Pre-built (0.14.1)
+  - PurchasesHybridCommon (18.1.0):
+    - RevenueCat (= 5.68.0)
   - RCTDeprecation (0.83.6)
   - RCTRequired (0.83.6)
   - RCTSwiftUI (0.83.6)
@@ -1946,6 +1948,10 @@ PODS:
     - React-utils (= 0.83.6)
     - ReactNativeDependencies
   - ReactNativeDependencies (0.83.6)
+  - RevenueCat (5.68.0)
+  - RNPurchases (10.0.1):
+    - PurchasesHybridCommon (= 18.1.0)
+    - React-Core
   - Yoga (0.0.0)
   - ZXingObjC/Core (3.6.9)
   - ZXingObjC/OneD (3.6.9):
@@ -2041,10 +2047,13 @@ DEPENDENCIES:
   - ReactCodegen (from `build/generated/ios/ReactCodegen`)
   - ReactCommon/turbomodule/core (from `../node_modules/react-native/ReactCommon`)
   - ReactNativeDependencies (from `../node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec`)
+  - RNPurchases (from `../node_modules/react-native-purchases`)
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
 
 SPEC REPOS:
   trunk:
+    - PurchasesHybridCommon
+    - RevenueCat
     - ZXingObjC
 
 EXTERNAL SOURCES:
@@ -2221,6 +2230,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native/ReactCommon"
   ReactNativeDependencies:
     :podspec: "../node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec"
+  RNPurchases:
+    :path: "../node_modules/react-native-purchases"
   Yoga:
     :path: "../node_modules/react-native/ReactCommon/yoga"
 
@@ -2239,6 +2250,7 @@ SPEC CHECKSUMS:
   ExpoModulesJSI: 24121c9a2f32d5f6b6ca2f7ff54925be716d5841
   FBLazyVector: 427fa1856a481856091061293ce865a75aa4f20f
   hermes-engine: 8d092ecaf3bab625e6bab1f853a48e80b9b41ebb
+  PurchasesHybridCommon: 32902b8fad349cf549f096183926ee33af00e36a
   RCTDeprecation: 9502b5eb8e3c9eb75ff5a333b2c591bab9d91e28
   RCTRequired: 0268a5d86aef1defea2e04289d74fdf3570197c1
   RCTSwiftUI: cff211c5e4d94e491dda240d663b8effd25296d7
@@ -2311,6 +2323,8 @@ SPEC CHECKSUMS:
   ReactCodegen: 169fa6c4ad3c3065f98fa2364bf95e9a21c3afec
   ReactCommon: ba28cd4e7d9e24014d2772a80e32da020c732b00
   ReactNativeDependencies: 3a27b9f16a64708e7d9b53d093c1aebac1653cd9
+  RevenueCat: c535d3739d51163f6d9d5dbd01c7b5d93b718ff5
+  RNPurchases: ef34b2c0c1fcdab1df209fde0d95b026f90ae329
   Yoga: e41d64347f52d634dd8c2f6bac33f95081959fd3
   ZXingObjC: 8898711ab495761b2dbbdec76d90164a6d7e14c5
 

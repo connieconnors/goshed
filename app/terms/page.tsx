@@ -152,11 +152,25 @@ export default function TermsPage() {
           <p style={pStyleLast}>Your continued use of the Service after the updated Terms become effective constitutes your acceptance of the changes. If you do not agree to the updated Terms, you must stop using GoShed.</p>
         </section>
 
+        <section style={sectionStyle}>
+          <h2 style={h2Style}>14. Subscriptions and Auto-Renewal</h2>
+          <p style={pStyle}>GoShed may offer paid auto-renewing subscriptions, such as monthly or yearly GoShed Pro access, through Apple in-app purchase on iOS.</p>
+          <ul style={ulStyle}>
+            <li>Payment is charged to your Apple ID at confirmation of purchase.</li>
+            <li>Subscriptions renew automatically unless canceled at least 24 hours before the end of the current billing period.</li>
+            <li>Your account may be charged for renewal within 24 hours before the end of the current period.</li>
+            <li>You can manage or cancel your subscription in your App Store account settings after purchase.</li>
+            <li>If you cancel, you keep access to paid features until the end of the current billing period.</li>
+            <li>Refund requests and billing issues for Apple purchases are handled by Apple under its App Store policies.</li>
+          </ul>
+          <p style={pStyleLast}>Subscription prices and billing periods are shown in the app before purchase and may vary by region or App Store settings.</p>
+        </section>
+
         <section style={{ marginBottom: 0 }}>
-          <h2 style={h2Style}>14. Contact</h2>
+          <h2 style={h2Style}>15. Contact</h2>
           <p style={pStyle}>If you have questions about these Terms or the Service, please contact us at:</p>
           <p style={pStyle}>ThriftShopper Inc. / GoShed</p>
-          <p style={pStyleLast}>Email: <a href="mailto:support@goshed.app" style={{ color: "var(--accent)", textDecoration: "none" }}>support@thriftshopper.com</a></p>
+          <p style={pStyleLast}>Email: <span style={{ color: "var(--accent)" }}>support@thriftshopper.com</span></p>
         </section>
       </div>
     </main>

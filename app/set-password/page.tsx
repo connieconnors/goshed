@@ -21,7 +21,6 @@ function SetPasswordForm() {
   const [sessionWaitTimedOut, setSessionWaitTimedOut] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sentConfirmEmail, setSentConfirmEmail] = useState(false);
 
   const emailNorm = email.trim().toLowerCase();
 
@@ -74,39 +73,46 @@ function SetPasswordForm() {
     setSubmitting(true);
     try {
       const supabase = createSupabaseBrowserClient();
-      const { data, error: signErr } = await supabase.auth.signUp({
+      const res = await fetch("/api/auth/upgrade-signup", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: emailNorm, password: p }),
+      });
+      const signupBody = (await res.json().catch(() => ({}))) as {
+        error?: unknown;
+        code?: unknown;
+      };
+      const created = res.ok;
+      const already = res.status === 409 && signupBody.code === "already_registered";
+      if (!created && !already) {
+        setError(typeof signupBody.error === "string" ? signupBody.error : "Could not create account. Try again.");
+        return;
+      }
+
+      const { error: signErr } = await supabase.auth.signInWithPassword({
         email: emailNorm,
         password: p,
-        options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
       });
       if (signErr) {
-        const msg = signErr.message?.toLowerCase() ?? "";
-        if (msg.includes("already registered") || msg.includes("already been registered")) {
-          setError("That email already has an account — sign in instead.");
-        } else {
-          setError(signErr.message || "Could not create account. Try again.");
-        }
+        setError(signErr.message || "Could not sign in. Check your password.");
         return;
       }
       localStorage.setItem(LAST_LOGIN_EMAIL_KEY, emailNorm);
-      if (data.session) {
-        const pr = await fetch("/api/auth/password-set", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ notificationConsent }),
-        });
-        if (!pr.ok) {
-          const pb = await pr.json().catch(() => ({}));
-          setError(typeof pb?.error === "string" ? pb.error : "Account created but profile could not be saved. Try signing in.");
-          return;
-        }
-        addEmailWithPassword(emailNorm);
-        await refreshAuthSession();
-        redirectHome();
+      const pr = await fetch("/api/auth/password-set", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notificationConsent }),
+      });
+      if (!pr.ok) {
+        const pb = await pr.json().catch(() => ({}));
+        setError(typeof pb?.error === "string" ? pb.error : "Account created but profile could not be saved. Try signing in.");
         return;
       }
-      setSentConfirmEmail(true);
+      addEmailWithPassword(emailNorm);
+      await refreshAuthSession();
+      redirectHome();
     } catch {
       setError("Something went wrong. Try again.");
     } finally {
@@ -117,7 +123,7 @@ function SetPasswordForm() {
   const waitingOnAuthSession = mounted && authSessionLoading && !sessionWaitTimedOut;
   if (!mounted || waitingOnAuthSession) {
     return (
-      <div style={{ padding: 40, textAlign: "center", fontFamily: "sans-serif" }}>
+      <div style={{ padding: "56px 40px 40px", textAlign: "center", fontFamily: "sans-serif" }}>
         <p style={{ color: "#666", fontSize: 16 }}>Checking session…</p>
       </div>
     );
@@ -131,29 +137,8 @@ function SetPasswordForm() {
     );
   }
 
-  if (sentConfirmEmail) {
-    return (
-      <div style={{ padding: 40, maxWidth: 400, margin: "0 auto", fontFamily: "sans-serif", textAlign: "center" }}>
-        <p style={{ margin: "0 0 16px" }}>
-          <Link href="/" style={{ fontSize: 13, color: "#666", textDecoration: "underline" }}>
-            ← Back to home
-          </Link>
-        </p>
-        <h2>Confirm your email ✉️</h2>
-        <p style={{ color: "#444", lineHeight: 1.5 }}>
-          We sent a link to <strong>{emailNorm}</strong>. Open it to finish setting up your account.
-        </p>
-        <p style={{ marginTop: 20 }}>
-          <Link href="/login" style={{ color: "#3d2e20", fontWeight: 500 }}>
-            Back to sign in
-          </Link>
-        </p>
-      </div>
-    );
-  }
-
   return (
-    <div style={{ padding: 40, maxWidth: 400, margin: "0 auto", fontFamily: "sans-serif" }}>
+    <div style={{ padding: "56px 40px 40px", maxWidth: 400, margin: "0 auto", fontFamily: "sans-serif" }}>
       <p style={{ margin: "0 0 16px", textAlign: "center" }}>
         <Link href="/" style={{ fontSize: 13, color: "var(--ink-soft)", textDecoration: "underline" }}>
           ← Back to home

@@ -18,6 +18,10 @@ import {
   FREE_LOGGED_IN_ITEM_LIMIT,
   GUEST_ANALYSIS_LIMIT,
 } from '@/lib/freeTier';
+import {
+  guestGateDismissedInStorage,
+  markGuestGateDismissed,
+} from '@/lib/guestGateStorage';
 
 type AnalyzeResult = {
   item_label: string;
@@ -224,6 +228,7 @@ function HomeContent() {
   const [rainNext24h, setRainNext24h] = useState<boolean | null>(null);
   const [showPaywallModal, setShowPaywallModal] = useState(false);
   const [showFreePlanNudge, setShowFreePlanNudge] = useState(false);
+  const [freePlanNudgeItemCount, setFreePlanNudgeItemCount] = useState(FREE_LOGGED_IN_ITEM_LIMIT - 1);
   const freePlanNudgeDismissedThisSessionRef = useRef(false);
   /** True when opened from footer Upgrade (voluntary title); false for item-limit / ?paywall=1. */
   const [paywallVoluntary, setPaywallVoluntary] = useState(false);
@@ -238,6 +243,7 @@ function HomeContent() {
   const aiConsentAgreedThisSessionRef = useRef(false);
   const [showGuestGateModal, setShowGuestGateModal] = useState(false);
   const [shedSignupModalOpen, setShedSignupModalOpen] = useState(false);
+  const guestGateDismissedRef = useRef(false);
   const GUEST_COUNT_KEY = "goshed_guest_analysis_count";
   const getStoredGuestCount = (): number => {
     if (typeof localStorage === "undefined") return 0;
@@ -264,9 +270,12 @@ function HomeContent() {
     guestAnalysisCountRef.current = next;
     if (typeof localStorage !== "undefined") localStorage.setItem(GUEST_COUNT_KEY, String(next));
     if (
-      next === GUEST_ANALYSIS_LIMIT ||
-      next === GUEST_GATE_REMINDER_COUNT ||
-      next === FREE_LOGGED_IN_ITEM_LIMIT
+      !guestGateDismissedRef.current &&
+      (
+        next === GUEST_ANALYSIS_LIMIT ||
+        next === GUEST_GATE_REMINDER_COUNT ||
+        next === FREE_LOGGED_IN_ITEM_LIMIT
+      )
     ) {
       setShowGuestGateModal(true);
     }
@@ -279,6 +288,7 @@ function HomeContent() {
   useEffect(() => {
     setMounted(true);
     guestAnalysisCountRef.current = getStoredGuestCount();
+    guestGateDismissedRef.current = guestGateDismissedInStorage();
   }, []);
 
   useEffect(() => {
@@ -582,7 +592,7 @@ function HomeContent() {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (effectiveGuest && guestAnalysisCountRef.current >= FREE_LOGGED_IN_ITEM_LIMIT) {
+    if (effectiveGuest && !guestGateDismissedRef.current && guestAnalysisCountRef.current >= FREE_LOGGED_IN_ITEM_LIMIT) {
       e.target.value = '';
       setShowGuestGateModal(true);
       return;
@@ -707,11 +717,15 @@ function HomeContent() {
         }
         refreshAuthSession()
           .then((snap) => {
+            const savedCount = typeof snap.itemCount === "number" ? snap.itemCount : null;
             if (
-              snap.itemCount === 9 &&
+              savedCount !== null &&
+              savedCount >= FREE_LOGGED_IN_ITEM_LIMIT - 1 &&
+              savedCount <= FREE_LOGGED_IN_ITEM_LIMIT &&
               snap.isPro !== true &&
               !freePlanNudgeDismissedThisSessionRef.current
             ) {
+              setFreePlanNudgeItemCount(savedCount);
               setShowFreePlanNudge(true);
             }
           })
@@ -1049,7 +1063,7 @@ function HomeContent() {
     flexDirection: "column",
     alignItems: "center",
     boxSizing: "border-box",
-    padding: "36px 20px",
+    padding: "56px 20px 24px",
   };
 
   if (!mounted) {
@@ -1671,10 +1685,14 @@ function HomeContent() {
             onClick={(e) => e.stopPropagation()}
           >
             <h2 id="free-plan-nudge-title" style={{ fontFamily: "var(--font-cormorant)", fontSize: "22px", fontWeight: 600, color: "var(--ink)", marginTop: 0, marginBottom: 12 }}>
-              One item left on your free plan.
+              {freePlanNudgeItemCount >= FREE_LOGGED_IN_ITEM_LIMIT
+                ? "You've filled your free shed."
+                : "One item left on your free plan."}
             </h2>
             <p style={{ fontSize: 15, color: "var(--ink-soft)", lineHeight: 1.5, marginBottom: 24 }}>
-              Upgrade to keep going — plans start at $2.99/month.
+              {freePlanNudgeItemCount >= FREE_LOGGED_IN_ITEM_LIMIT
+                ? "Upgrade to keep adding items — plans start at $2.99/month."
+                : "Upgrade to keep going — plans start at $2.99/month."}
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <button
@@ -1788,7 +1806,11 @@ function HomeContent() {
               </Link>
               <button
                 type="button"
-                onClick={() => setShowGuestGateModal(false)}
+                onClick={() => {
+                  guestGateDismissedRef.current = true;
+                  markGuestGateDismissed();
+                  setShowGuestGateModal(false);
+                }}
                 style={{
                   width: "100%",
                   padding: "14px 20px",

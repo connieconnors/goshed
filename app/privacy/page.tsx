@@ -99,7 +99,7 @@ export default function PrivacyPage() {
           <p style={subheadStyle}>4.1 Authentication, storage, and infrastructure</p>
           <p style={pStyle}>We use a managed backend platform (including services such as Supabase) to provide: user authentication and account management; secure storage of your account data and the content you create in GoShed; and core application infrastructure. Your email address, authentication data, and stored content may be processed and stored by these providers so that we can operate GoShed reliably and securely.</p>
           <p style={subheadStyle}>4.2 Payments and subscriptions</p>
-          <p style={pStyle}>For payments and subscriptions, we use specialized billing providers, including: payment processors such as Stripe to securely process payments; and subscription and entitlement management services such as RevenueCat to manage free tiers (for example, initial free items), pay‑per‑item unlocks, and subscription plans (such as monthly or yearly access). These services may process payment information, purchase history, and basic account identifiers as needed to complete transactions, manage your plan, prevent fraud, and comply with legal obligations.</p>
+          <p style={pStyle}>For payments and subscriptions, iOS purchases are processed by Apple through the App Store. We also use subscription and entitlement management services such as RevenueCat to manage free tiers, purchase history, and subscription plans (such as monthly or yearly access). These services may process payment status, purchase history, and basic account identifiers as needed to complete transactions, manage your plan, prevent fraud, and comply with legal obligations.</p>
           <p style={subheadStyle}>4.3 Analytics and diagnostics</p>
           <p style={pStyle}>We use analytics and diagnostics tools, such as Google Analytics and similar services, to help us understand how GoShed is used and to identify issues. These services may collect: device and technical information (device type, OS, IP address, app version); usage information (screens viewed, actions taken, feature usage, session duration); and crash and performance data. We use this information to improve GoShed&apos;s reliability and user experience and do not use analytics data for cross‑app targeted advertising.</p>
           <p style={subheadStyle}>4.4 Maps, location, and place information</p>
@@ -128,13 +128,13 @@ export default function PrivacyPage() {
             <li>Object to or restrict certain processing, or withdraw consent where processing is based on consent.</li>
           </ul>
           <p style={pStyle}>You can also: stop using GoShed and uninstall the app at any time to stop further data collection; and manage app‑level permissions (such as location and notifications) via your device settings.</p>
-          <p style={pStyle}>To exercise your rights, contact us at <a href="mailto:support@thriftshopper.com" style={{ color: "var(--accent)", textDecoration: "none" }}>support@thriftshopper.com</a>. We may need to verify your identity before fulfilling certain requests.</p>
+          <p style={pStyle}>To exercise your rights, contact us at <span style={{ color: "var(--accent)" }}>support@thriftshopper.com</span>. We may need to verify your identity before fulfilling certain requests.</p>
         </section>
 
         <section style={sectionStyle}>
           <h2 style={h2Style}>7. Children&apos;s Privacy</h2>
           <p style={pStyle}>GoShed is not directed to children under 13, and we do not knowingly collect personal information from children under 13. If we learn that we have collected personal information from a child under 13, we will take reasonable steps to delete it as soon as possible.</p>
-          <p style={pStyleLast}>If you are a parent or guardian and believe that a child has provided us with personal information, please contact us at <a href="mailto:support@thriftshopper.com" style={{ color: "var(--accent)", textDecoration: "none" }}>support@thriftshopper.com</a>.</p>
+          <p style={pStyleLast}>If you are a parent or guardian and believe that a child has provided us with personal information, please contact us at <span style={{ color: "var(--accent)" }}>support@thriftshopper.com</span>.</p>
         </section>
 
         <section style={sectionStyle}>
@@ -155,11 +155,11 @@ export default function PrivacyPage() {
           <p style={pStyleLast}>Your continued use of GoShed after the updated Privacy Policy becomes effective means you accept the changes.</p>
         </section>
 
-        <section style={{ marginBottom: 0 }}>
+        <section id="contact" style={{ marginBottom: 0 }}>
           <h2 style={h2Style}>11. Contact Us</h2>
           <p style={pStyle}>If you have any questions about this Privacy Policy or our data practices, please contact us at:</p>
           <p style={pStyle}>ThriftShopper Inc. / GoShed</p>
-          <p style={pStyleLast}>Email: <a href="mailto:support@goshed.app" style={{ color: "var(--accent)", textDecoration: "none" }}>support@thriftshopper.com</a></p>
+          <p style={pStyleLast}>Email: <span style={{ color: "var(--accent)" }}>support@thriftshopper.com</span></p>
         </section>
       </div>
     </main>

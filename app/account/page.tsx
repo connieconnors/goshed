@@ -6,6 +6,15 @@ import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
 import { useAuthSession } from "@/lib/auth-session-context";
 import { addEmailWithPassword } from "@/lib/authPasswordHint";
+import {
+  isNativeIosPurchasesAvailable,
+  restoreNativeIosPurchases,
+} from "@/lib/revenuecat-purchases";
+
+const WEB_REVENUECAT_API_KEY =
+  process.env.NEXT_PUBLIC_REVENUECAT_WEB_API_KEY?.trim() ||
+  process.env.NEXT_PUBLIC_REVENUECAT_API_KEY?.trim() ||
+  "";
 
 export default function AccountPage() {
   const router = useRouter();
@@ -29,6 +38,12 @@ export default function AccountPage() {
     setUser(sessionUser ? { id: sessionUser.id, email: sessionUser.email ?? null } : null);
     setLoading(false);
   }, [sessionLoading, sessionUser]);
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.replace("/login?redirect=/account");
+    }
+  }, [loading, router, user]);
 
   const handleSignOut = async () => {
     const supabase = createSupabaseBrowserClient();
@@ -101,13 +116,39 @@ export default function AccountPage() {
     setRestoreLoading(true);
     setRestoreMessage(null);
     try {
+      if (!user?.id) {
+        setRestoreMessage({ type: "error", text: "Sign in before restoring purchases." });
+        return;
+      }
+      if (await isNativeIosPurchasesAvailable()) {
+        await restoreNativeIosPurchases(user.id);
+        const snap = await refreshAuthSession();
+        if (snap.isPro) {
+          setRestoreMessage({ type: "success", text: "GoShed Pro is active on this account." });
+        } else {
+          setRestoreMessage({
+            type: "success",
+            text: "Restore completed. No active subscription was found for this Apple ID.",
+          });
+        }
+        return;
+      }
+
       const { Purchases } = await import("@revenuecat/purchases-js");
       if (!Purchases.isConfigured()) {
-        setRestoreMessage({
-          type: "error",
-          text: "Billing isn’t active in this browser yet. Open Upgrade from the app, then try again here.",
-        });
-        return;
+        if (!WEB_REVENUECAT_API_KEY) {
+          setRestoreMessage({
+            type: "error",
+            text: "Billing isn’t available right now. Try again later.",
+          });
+          return;
+        }
+        Purchases.configure({ apiKey: WEB_REVENUECAT_API_KEY, appUserId: user.id });
+      } else {
+        const current = Purchases.getSharedInstance();
+        if (current.getAppUserId() !== user.id) {
+          await current.changeUser(user.id);
+        }
       }
       const purchases = Purchases.getSharedInstance();
       await purchases.getCustomerInfo();
@@ -154,12 +195,11 @@ export default function AccountPage() {
   }
 
   if (!user) {
-    router.replace("/login?redirect=/account");
     return null;
   }
 
   return (
-    <main style={{ minHeight: "100vh", background: "var(--bg)", padding: "48px 24px" }}>
+    <main style={{ minHeight: "100vh", background: "var(--bg)", padding: "60px 24px 48px" }}>
       <div style={{ maxWidth: "400px", margin: "0 auto" }}>
         <Link href="/shed" style={{ fontFamily: "var(--font-cormorant)", fontSize: "24px", fontWeight: 300, color: "var(--ink)", textDecoration: "none" }}>
           go<em style={{ color: "var(--accent)" }}>shed</em>
@@ -195,7 +235,7 @@ export default function AccountPage() {
             Set a password
           </h2>
           <p style={{ fontSize: "13px", color: "var(--ink-soft)", marginBottom: "12px" }}>
-            Sign in with email and password next time instead of a link.
+            Sign in with email and password next time.
           </p>
           <input
             type="password"
