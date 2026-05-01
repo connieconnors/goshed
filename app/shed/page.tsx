@@ -244,8 +244,8 @@ export default function ShedPage() {
           overflow: hidden;
         }
       `}</style>
-      <div style={{ maxWidth: "560px", margin: "0 auto", padding: "0 1.25rem" }}>
-        <div style={{ padding: "60px 0 0", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+      <div style={{ maxWidth: "560px", margin: "0 auto", padding: "0 1.75rem" }}>
+        <div style={{ padding: "22px 0 0", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div>
             <Link
               href="/"

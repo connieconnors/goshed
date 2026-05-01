@@ -27,13 +27,18 @@ export function clearGuestTrialStateAfterAuthTransition(): boolean {
   return true;
 }
 
-export function guestGateDismissedInStorage(): boolean {
-  if (typeof localStorage === "undefined") return false;
-  return localStorage.getItem(GUEST_GATE_DISMISSED_KEY) === "true";
+export function getGuestGateDismissedUntilCount(): number {
+  if (typeof localStorage === "undefined") return 0;
+  const v = localStorage.getItem(GUEST_GATE_DISMISSED_KEY);
+  // Legacy value from the first guest gate pass. Treat it as "dismissed at the 5-item nudge",
+  // not as a permanent opt-out, so later 9/10 item reminders still appear.
+  if (v === "true") return 5;
+  const n = parseInt(v ?? "0", 10);
+  return Number.isFinite(n) ? n : 0;
 }
 
-export function markGuestGateDismissed() {
-  if (typeof localStorage !== "undefined") localStorage.setItem(GUEST_GATE_DISMISSED_KEY, "true");
+export function markGuestGateDismissedUntilCount(count: number) {
+  if (typeof localStorage !== "undefined") localStorage.setItem(GUEST_GATE_DISMISSED_KEY, String(count));
 }
 
 export function getStoredGuestAnalysisCount(): number {

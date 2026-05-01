@@ -282,11 +282,13 @@ export default function App() {
   }, [handleRevenueCatRequest]);
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
       <WebView
         ref={webViewRef}
         source={{ uri: appUrl }}
         originWhitelist={['*']}
+        automaticallyAdjustContentInsets={false}
+        contentInsetAdjustmentBehavior="never"
         injectedJavaScriptBeforeContentLoaded={nativePlatformInjection}
         startInLoadingState
         onMessage={onWebViewMessage}

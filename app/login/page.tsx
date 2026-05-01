@@ -146,7 +146,7 @@ function LoginForm() {
   return (
     <div
       style={{
-        padding: "56px 40px 40px",
+        padding: "24px 40px 40px",
         maxWidth: 400,
         margin: "0 auto",
         fontFamily: "inherit",

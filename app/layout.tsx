@@ -67,7 +67,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-title" content="GoShed" />
         <link rel="apple-touch-icon" href="/icon-512.png" />
       </head>
-      <body className="antialiased" style={{ display: "flex", flexDirection: "column", minHeight: "100vh", width: "100%", maxWidth: "100%", overflowX: "hidden" }} suppressHydrationWarning>
+      <body className="antialiased" style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }} suppressHydrationWarning>
         <Script
           src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
           strategy="afterInteractive"
@@ -82,7 +82,7 @@ export default function RootLayout({
         </Script>
         <AuthSessionProvider>
           <div
-            style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, width: "100%", maxWidth: "100%", overflowX: "hidden" }}
+            style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}
             suppressHydrationWarning
           >
             <PasswordOnboardingGate>

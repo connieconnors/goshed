@@ -20,9 +20,9 @@ import {
 } from '@/lib/freeTier';
 import {
   clearGuestTrialStateAfterAuthTransition,
+  getGuestGateDismissedUntilCount,
   getStoredGuestAnalysisCount,
-  guestGateDismissedInStorage,
-  markGuestGateDismissed,
+  markGuestGateDismissedUntilCount,
   setStoredGuestAnalysisCount,
 } from '@/lib/guestGateStorage';
 
@@ -246,7 +246,7 @@ function HomeContent() {
   const aiConsentAgreedThisSessionRef = useRef(false);
   const [showGuestGateModal, setShowGuestGateModal] = useState(false);
   const [shedSignupModalOpen, setShedSignupModalOpen] = useState(false);
-  const guestGateDismissedRef = useRef(false);
+  const guestGateDismissedUntilCountRef = useRef(getGuestGateDismissedUntilCount());
   const guestAnalysisCountRef = useRef(getStoredGuestAnalysisCount());
   /** Force guest-mode limit from URL (e.g. ?guest=1). Set in useEffect to avoid hydration mismatch. */
   const [forceGuestMode, setForceGuestMode] = useState(false);
@@ -266,7 +266,7 @@ function HomeContent() {
     guestAnalysisCountRef.current = next;
     setStoredGuestAnalysisCount(next);
     if (
-      !guestGateDismissedRef.current &&
+      next > guestGateDismissedUntilCountRef.current &&
       (
         next === GUEST_ANALYSIS_LIMIT ||
         next === GUEST_GATE_REMINDER_COUNT ||
@@ -285,7 +285,7 @@ function HomeContent() {
     setMounted(true);
     const clearedStaleGuestState = clearGuestTrialStateAfterAuthTransition();
     guestAnalysisCountRef.current = clearedStaleGuestState ? 0 : getStoredGuestAnalysisCount();
-    guestGateDismissedRef.current = clearedStaleGuestState ? false : guestGateDismissedInStorage();
+    guestGateDismissedUntilCountRef.current = clearedStaleGuestState ? 0 : getGuestGateDismissedUntilCount();
     if (clearedStaleGuestState) setShowGuestGateModal(false);
   }, []);
 
@@ -590,7 +590,11 @@ function HomeContent() {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (effectiveGuest && !guestGateDismissedRef.current && guestAnalysisCountRef.current >= FREE_LOGGED_IN_ITEM_LIMIT) {
+    if (
+      effectiveGuest &&
+      guestAnalysisCountRef.current >= FREE_LOGGED_IN_ITEM_LIMIT &&
+      guestAnalysisCountRef.current > guestGateDismissedUntilCountRef.current
+    ) {
       e.target.value = '';
       setShowGuestGateModal(true);
       return;
@@ -1061,8 +1065,7 @@ function HomeContent() {
     flexDirection: "column",
     alignItems: "center",
     boxSizing: "border-box",
-    padding: "68px 20px 24px",
-    overflowX: "hidden",
+    padding: "20px 28px 24px",
   };
 
   if (!mounted) {
@@ -1077,7 +1080,7 @@ function HomeContent() {
 
   return (
     <main className="goshed-home-main" style={homeShellStyle}>
-      <div style={{ width: '100%', maxWidth: '390px', boxSizing: 'border-box' }}>
+      <div style={{ width: '100%', maxWidth: '390px' }}>
         {/* Header — z-index keeps controls above in-page layers; Sign in uses router.push so navigation isn’t lost to overlays/prefetch edge cases */}
         <div
           style={{
@@ -1162,7 +1165,7 @@ function HomeContent() {
         <div role="button" tabIndex={0} onClick={handleZoneClick}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleZoneClick(); } }}
           className="goshed-photo-slot"
-          style={{ marginTop: '32px', background: 'var(--surface)', borderRadius: '22px', border: '1.5px dashed var(--soft)', height: 'clamp(238px, 33svh, 252px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px', cursor: 'pointer', overflow: 'hidden', position: 'relative' }}>
+          style={{ marginTop: '28px', background: 'var(--surface)', borderRadius: '22px', border: '1.5px dashed var(--soft)', height: 'clamp(238px, 33svh, 252px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px', cursor: 'pointer', overflow: 'hidden', position: 'relative' }}>
           {previewUrl ? (
             <img src={previewUrl} alt="Selected item" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '26px' }} />
           ) : (
@@ -1809,8 +1812,8 @@ function HomeContent() {
               <button
                 type="button"
                 onClick={() => {
-                  guestGateDismissedRef.current = true;
-                  markGuestGateDismissed();
+                  guestGateDismissedUntilCountRef.current = guestAnalysisCountRef.current;
+                  markGuestGateDismissedUntilCount(guestAnalysisCountRef.current);
                   setShowGuestGateModal(false);
                 }}
                 style={{

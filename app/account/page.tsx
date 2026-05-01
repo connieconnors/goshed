@@ -199,7 +199,7 @@ export default function AccountPage() {
   }
 
   return (
-    <main style={{ minHeight: "100vh", background: "var(--bg)", padding: "60px 24px 48px" }}>
+    <main style={{ minHeight: "100vh", background: "var(--bg)", padding: "24px 24px 48px" }}>
       <div style={{ maxWidth: "400px", margin: "0 auto" }}>
         <Link href="/shed" style={{ fontFamily: "var(--font-cormorant)", fontSize: "24px", fontWeight: 300, color: "var(--ink)", textDecoration: "none" }}>
           go<em style={{ color: "var(--accent)" }}>shed</em>

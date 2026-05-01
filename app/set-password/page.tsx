@@ -123,7 +123,7 @@ function SetPasswordForm() {
   const waitingOnAuthSession = mounted && authSessionLoading && !sessionWaitTimedOut;
   if (!mounted || waitingOnAuthSession) {
     return (
-      <div style={{ padding: "56px 40px 40px", textAlign: "center", fontFamily: "sans-serif" }}>
+      <div style={{ padding: "24px 40px 40px", textAlign: "center", fontFamily: "sans-serif" }}>
         <p style={{ color: "#666", fontSize: 16 }}>Checking session…</p>
       </div>
     );
@@ -131,14 +131,14 @@ function SetPasswordForm() {
 
   if (sessionUser) {
     return (
-      <div style={{ padding: 40, textAlign: "center", fontFamily: "sans-serif" }}>
+      <div style={{ padding: "24px 40px 40px", textAlign: "center", fontFamily: "sans-serif" }}>
         <p style={{ color: "#666", fontSize: 16 }}>You’re signed in — taking you to GoShed…</p>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: "56px 40px 40px", maxWidth: 400, margin: "0 auto", fontFamily: "sans-serif" }}>
+    <div style={{ padding: "24px 40px 40px", maxWidth: 400, margin: "0 auto", fontFamily: "sans-serif" }}>
       <p style={{ margin: "0 0 16px", textAlign: "center" }}>
         <Link href="/" style={{ fontSize: 13, color: "var(--ink-soft)", textDecoration: "underline" }}>
           ← Back to home
