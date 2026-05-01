@@ -1064,6 +1064,7 @@ function HomeContent() {
     alignItems: "center",
     boxSizing: "border-box",
     padding: "68px 20px 24px",
+    overflowX: "hidden",
   };
 
   if (!mounted) {
@@ -1078,7 +1079,7 @@ function HomeContent() {
 
   return (
     <main className="goshed-home-main" style={homeShellStyle}>
-      <div style={{ width: '100%', maxWidth: '390px' }}>
+      <div style={{ width: '100%', maxWidth: '390px', boxSizing: 'border-box' }}>
         {/* Header — z-index keeps controls above in-page layers; Sign in uses router.push so navigation isn’t lost to overlays/prefetch edge cases */}
         <div
           style={{

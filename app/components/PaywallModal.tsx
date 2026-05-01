@@ -101,6 +101,13 @@ function checkoutPriceLabel(pkg: CheckoutPackage | null): string | null {
   return product?.currentPrice?.formattedPrice ?? null;
 }
 
+function resetHorizontalViewport() {
+  if (typeof window === "undefined") return;
+  window.scrollTo({ left: 0, top: window.scrollY, behavior: "instant" });
+  document.documentElement.scrollLeft = 0;
+  document.body.scrollLeft = 0;
+}
+
 export function PaywallModal({
   open,
   onClose,
@@ -115,6 +122,7 @@ export function PaywallModal({
   const [plansLoading, setPlansLoading] = useState(false);
   const [plansSettled, setPlansSettled] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
+  const [purchasingPlan, setPurchasingPlan] = useState<"annual" | "monthly" | null>(null);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
   const [showPromoInput, setShowPromoInput] = useState(false);
   const [promoCode, setPromoCode] = useState("");
@@ -145,6 +153,11 @@ export function PaywallModal({
   const { refresh } = useAuthSession();
   const [restoreLoading, setRestoreLoading] = useState(false);
   const [restoreMessage, setRestoreMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) return;
+    resetHorizontalViewport();
+  }, [open]);
 
   const retryPlansFetch = useCallback(() => {
     setPlansIssueMessage(null);
@@ -210,6 +223,8 @@ export function PaywallModal({
       setPlansLoading(false);
       setPlansSettled(false);
       setPurchaseError(null);
+      setPurchasing(false);
+      setPurchasingPlan(null);
       setShowPromoInput(false);
       setPromoCode("");
       setPromoError(null);
@@ -394,6 +409,7 @@ export function PaywallModal({
       if (!pkg || purchasing) return;
       setPurchaseError(null);
       setPurchasing(true);
+      setPurchasingPlan(pkg.plan);
       try {
         if (pkg.source === "native-ios") {
           await purchaseNativeIosPackage(pkg.nativePackage);
@@ -406,7 +422,9 @@ export function PaywallModal({
       } catch (err: unknown) {
         setPurchaseError(revenueCatErrorMessage(err, "Purchase failed. Try again."));
       } finally {
+        resetHorizontalViewport();
         setPurchasing(false);
+        setPurchasingPlan(null);
       }
     },
     [purchasing, onClose, onPurchaseSuccess]
@@ -875,7 +893,7 @@ export function PaywallModal({
                     cursor: signedIn && yearDisabled ? "not-allowed" : "pointer",
                   }}
                 >
-                  {purchasing ? "Processing…" : `Get the year — ${yearlyCtaPrice}`}
+                  {purchasingPlan === "annual" ? "Processing…" : `Get the year — ${yearlyCtaPrice}`}
                 </button>
                 <button
                   type="button"
@@ -894,7 +912,7 @@ export function PaywallModal({
                     fontFamily: "inherit",
                   }}
                 >
-                  {purchasing ? "Processing…" : `Continue monthly — ${monthlyCtaPrice}`}
+                  {purchasingPlan === "monthly" ? "Processing…" : `Continue monthly — ${monthlyCtaPrice}`}
                 </button>
                 <button
                   type="button"
