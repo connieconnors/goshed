@@ -18,7 +18,7 @@ const WEB_REVENUECAT_API_KEY =
 
 export default function AccountPage() {
   const router = useRouter();
-  const { user: sessionUser, loading: sessionLoading, refresh: refreshAuthSession } = useAuthSession();
+  const { user: sessionUser, loading: sessionLoading, isPro, code, refresh: refreshAuthSession } = useAuthSession();
   const [user, setUser] = useState<{ id?: string; email?: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -198,9 +198,27 @@ export default function AccountPage() {
     return null;
   }
 
+  const hasPremiumAccess = isPro || Boolean(code);
+
   return (
     <main style={{ minHeight: "100vh", background: "var(--bg)", padding: "24px 24px 48px" }}>
+      <style>{`
+        @media (max-width: 430px) {
+          .account-invite-row {
+            flex-direction: column;
+          }
+          .account-invite-row input,
+          .account-invite-row button {
+            width: 100%;
+          }
+        }
+      `}</style>
       <div style={{ maxWidth: "400px", margin: "0 auto" }}>
+        <p style={{ margin: "0 0 14px" }}>
+          <Link href="/shed" style={{ fontSize: "13px", color: "var(--ink-soft)", textDecoration: "none" }}>
+            ← Back to My Shed
+          </Link>
+        </p>
         <Link href="/shed" style={{ fontFamily: "var(--font-cormorant)", fontSize: "24px", fontWeight: 300, color: "var(--ink)", textDecoration: "none" }}>
           go<em style={{ color: "var(--accent)" }}>shed</em>
         </Link>
@@ -216,6 +234,11 @@ export default function AccountPage() {
           <p style={{ fontSize: "15px", fontWeight: 500, color: "var(--ink)", margin: 0 }}>
             {user.email ?? "—"}
           </p>
+          {hasPremiumAccess ? (
+            <p style={{ fontSize: "12px", color: "var(--accent)", margin: "8px 0 0", fontWeight: 600 }}>
+              Premium active ✦
+            </p>
+          ) : null}
         </div>
 
         {/* Sign out */}
@@ -229,13 +252,13 @@ export default function AccountPage() {
           </button>
         </div>
 
-        {/* Set a password */}
+        {/* Change password */}
         <section style={{ marginTop: "32px", paddingTop: "24px", borderTop: "1px solid var(--soft)" }}>
           <h2 style={{ fontSize: "14px", fontWeight: 600, color: "var(--ink)", marginBottom: "4px" }}>
-            Set a password
+            Change password
           </h2>
           <p style={{ fontSize: "13px", color: "var(--ink-soft)", marginBottom: "12px" }}>
-            Sign in with email and password next time.
+            Update the password you use to sign in with this email.
           </p>
           <input
             type="password"
@@ -259,7 +282,7 @@ export default function AccountPage() {
             disabled={passwordLoading || !newPassword.trim() || newPassword !== confirmPassword}
             style={{ padding: "10px 16px", fontSize: "14px", fontWeight: 500, borderRadius: "8px", background: "var(--accent)", color: "var(--white)", border: "none", cursor: passwordLoading ? "not-allowed" : "pointer", opacity: passwordLoading || !newPassword.trim() || newPassword !== confirmPassword ? 0.6 : 1 }}
           >
-            {passwordLoading ? "Setting…" : "Set password"}
+            {passwordLoading ? "Saving…" : "Save new password"}
           </button>
           {passwordMessage && (
             <p style={{ fontSize: "13px", marginTop: "10px", marginBottom: 0, color: passwordMessage.type === "success" ? "var(--green)" : "#c0392b" }}>
@@ -274,21 +297,21 @@ export default function AccountPage() {
             Family &amp; sharing
           </h2>
           <p style={{ fontSize: "13px", color: "var(--ink-soft)", marginBottom: "16px" }}>
-            Invite someone to view and help decide on your shed — great for estates, moves, or just a second opinion.
+            Invite someone to view and help decide on your saved Shed. You need to be signed in so the invite can link to your items.
           </p>
-          <div style={{ display: "flex", gap: "8px" }}>
+          <div className="account-invite-row" style={{ display: "flex", gap: "8px", minWidth: 0 }}>
             <input
               type="email"
               placeholder="their@email.com"
               value={inviteEmail}
               onChange={(e) => setInviteEmail(e.target.value)}
-              style={{ flex: 1, padding: "10px 12px", fontSize: "14px", border: "1px solid var(--soft)", borderRadius: "8px", background: "var(--white)", color: "var(--ink)", outline: "none" }}
+              style={{ flex: "1 1 0", minWidth: 0, padding: "10px 12px", fontSize: "14px", border: "1px solid var(--soft)", borderRadius: "8px", background: "var(--white)", color: "var(--ink)", outline: "none", boxSizing: "border-box" }}
             />
             <button
               type="button"
               onClick={handleInvite}
               disabled={inviteLoading}
-              style={{ padding: "10px 16px", fontSize: "14px", fontWeight: 500, borderRadius: "8px", background: "var(--accent)", color: "var(--white)", border: "none", cursor: inviteLoading ? "not-allowed" : "pointer", opacity: inviteLoading ? 0.6 : 1 }}
+              style={{ flex: "0 0 auto", padding: "10px 16px", fontSize: "14px", fontWeight: 500, borderRadius: "8px", background: "var(--accent)", color: "var(--white)", border: "none", cursor: inviteLoading ? "not-allowed" : "pointer", opacity: inviteLoading ? 0.6 : 1, boxSizing: "border-box" }}
             >
               {inviteLoading ? "Sending…" : "Invite"}
             </button>

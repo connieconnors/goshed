@@ -280,6 +280,14 @@ export function PaywallModal({
         return;
       }
 
+      if (snap.isPro) {
+        setRestoreMessage("GoShed Pro is active on this account.");
+        onPurchaseSuccess?.();
+        window.setTimeout(() => onClose(), 900);
+        finish();
+        return;
+      }
+
       if (useNativeIos && !hasNativeIosRevenueCatKey()) {
         lastOfferingsSnapshotRef.current = { reason: "missing_NEXT_PUBLIC_REVENUECAT_IOS_API_KEY" };
         console.warn("[PaywallModal] Native iOS billing key missing — set NEXT_PUBLIC_REVENUECAT_IOS_API_KEY", lastOfferingsSnapshotRef.current);
@@ -411,6 +419,13 @@ export function PaywallModal({
       setPurchasing(true);
       setPurchasingPlan(pkg.plan);
       try {
+        const snap = await refresh();
+        if (snap.isPro) {
+          setRestoreMessage("GoShed Pro is active on this account.");
+          onPurchaseSuccess?.();
+          window.setTimeout(() => onClose(), 900);
+          return;
+        }
         if (pkg.source === "native-ios") {
           await purchaseNativeIosPackage(pkg.nativePackage);
         } else {
@@ -427,7 +442,7 @@ export function PaywallModal({
         setPurchasingPlan(null);
       }
     },
-    [purchasing, onClose, onPurchaseSuccess]
+    [purchasing, refresh, onClose, onPurchaseSuccess]
   );
 
   const completeGuestSignupAndPurchase = useCallback(async () => {
@@ -544,7 +559,16 @@ export function PaywallModal({
         return;
       }
 
-      await beforeGuestPurchase?.();
+      try {
+        await beforeGuestPurchase?.();
+      } catch (err: unknown) {
+        setUpgradeNudgeError(
+          err instanceof Error
+            ? err.message
+            : "Create or sign in to your account so we can save your Shed before checkout."
+        );
+        return;
+      }
 
       if (billingRuntime === "native-ios" && !hasNativeIosRevenueCatKey()) {
         setUpgradeNudgeError("Subscription checkout isn’t available in this version. Try again later.");
@@ -600,6 +624,7 @@ export function PaywallModal({
         setTimeout(() => {
           onClose();
           onPurchaseSuccess?.();
+          resetHorizontalViewport();
         }, 1500);
       } else {
         setPromoError("That code isn't valid — try again");
@@ -652,7 +677,7 @@ export function PaywallModal({
         setUpgradeNudgeError(null);
         return;
       }
-      onClose();
+      if (voluntary) onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -663,6 +688,7 @@ export function PaywallModal({
     upgradeNudgeSubmitting,
     guestSignupOpen,
     upgradeNudgeModalOpen,
+    voluntary,
     onClose,
   ]);
 
@@ -699,6 +725,7 @@ export function PaywallModal({
   if (!open) return null;
 
   const signedIn = !!userId;
+  const canDismiss = voluntary;
   const showPlansSpinner = signedIn && (plansLoading || !plansSettled);
   const showPurchaseRow = plansSettled && !showPlansSpinner;
 
@@ -735,7 +762,9 @@ export function PaywallModal({
   const yearlyCtaPrice = yearlyPriceLabel ? `${yearlyPriceLabel}/year` : "$24.99/year";
   const monthlyCtaPrice = monthlyPriceLabel ? `${monthlyPriceLabel}/month` : "$2.99/month";
   const planSummary =
-    yearlyPriceLabel && monthlyPriceLabel
+    !signedIn
+      ? "Create or sign in to your account first so your Shed is saved before checkout."
+      : yearlyPriceLabel && monthlyPriceLabel
       ? `Keep going for ${monthlyPriceLabel} a month — or ${yearlyPriceLabel} for the year.`
       : "Choose a plan to keep going with unlimited items.";
   const restoreDisabled =
@@ -759,7 +788,9 @@ export function PaywallModal({
         ...PAYWALL_OVERLAY_SAFE_PADDING,
         background: "rgba(44,36,22,0.44)",
       }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onClick={(e) => {
+        if (canDismiss && e.target === e.currentTarget) onClose();
+      }}
     >
       <div
         className="goshed-modal-card"
@@ -781,7 +812,9 @@ export function PaywallModal({
       >
         <button
           type="button"
-          onClick={onClose}
+          onClick={() => {
+            if (canDismiss) onClose();
+          }}
           aria-label="Close"
           style={{
             position: "absolute",
@@ -798,8 +831,9 @@ export function PaywallModal({
             color: "rgba(107, 91, 69, 0.78)",
             fontSize: 20,
             lineHeight: 1,
-            cursor: "pointer",
+            cursor: canDismiss ? "pointer" : "default",
             fontFamily: "inherit",
+            visibility: canDismiss ? "visible" : "hidden",
           }}
         >
           ×
@@ -914,45 +948,49 @@ export function PaywallModal({
                 >
                   {purchasingPlan === "monthly" ? "Processing…" : `Continue monthly — ${monthlyCtaPrice}`}
                 </button>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  disabled={purchasing}
-                  style={{
-                    minHeight: 38,
-                    padding: "6px 12px",
-                    background: "transparent",
-                    color: "rgba(107, 91, 69, 0.86)",
-                    border: "none",
-                    fontSize: 14,
-                    cursor: purchasing ? "not-allowed" : "pointer",
-                    fontFamily: "inherit",
-                  }}
-                >
-                  Not now
-                </button>
+                {canDismiss ? (
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    disabled={purchasing}
+                    style={{
+                      minHeight: 38,
+                      padding: "6px 12px",
+                      background: "transparent",
+                      color: "rgba(107, 91, 69, 0.86)",
+                      border: "none",
+                      fontSize: 14,
+                      cursor: purchasing ? "not-allowed" : "pointer",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    Not now
+                  </button>
+                ) : null}
               </div>
             )}
-            <p style={{ fontSize: 11, color: "rgba(107, 91, 69, 0.86)", margin: "4px 0 0", textAlign: "center", lineHeight: 1.5 }}>
+            <p style={{ fontSize: 11, color: "rgba(107, 91, 69, 0.78)", margin: "10px 0 0", textAlign: "center", lineHeight: 1.45 }}>
               Cancel anytime.
             </p>
-            <p style={{ fontSize: 10.5, color: "rgba(107, 91, 69, 0.68)", margin: "5px 2px 0", textAlign: "center", lineHeight: 1.45 }}>
+            <p style={{ fontSize: 10, color: "rgba(107, 91, 69, 0.54)", margin: "9px 4px 0", textAlign: "center", lineHeight: 1.38 }}>
               Subscriptions renew automatically unless canceled at least 24 hours before the end of the current period. Payment is charged to your Apple ID, and you can manage or cancel in App Store account settings.{" "}
-              <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: "rgba(107, 91, 69, 0.82)", textDecoration: "underline" }}>
+              <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: "rgba(107, 91, 69, 0.68)", textDecoration: "underline" }}>
                 Terms
               </a>
               {" · "}
-              <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: "rgba(107, 91, 69, 0.82)", textDecoration: "underline" }}>
+              <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: "rgba(107, 91, 69, 0.68)", textDecoration: "underline" }}>
                 Privacy
               </a>
             </p>
             <div
               style={{
-                marginTop: 8,
+                marginTop: 14,
+                paddingTop: 10,
+                borderTop: "1px solid rgba(196,168,130,0.22)",
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
-                gap: 5,
+                gap: 7,
               }}
             >
               {!showPromoInput ? (
@@ -963,7 +1001,7 @@ export function PaywallModal({
                     background: "none",
                     border: "none",
                     padding: 0,
-                    color: "rgba(107, 91, 69, 0.66)",
+                    color: "rgba(107, 91, 69, 0.62)",
                     fontSize: 11.5,
                     cursor: "pointer",
                     textDecoration: "underline",
@@ -975,34 +1013,30 @@ export function PaywallModal({
                 </button>
               ) : null}
               {signedIn ? (
-                <>
-                  <button
-                    type="button"
-                    disabled={restoreDisabled}
-                    onClick={() => void handleRefreshSubscriptionStatus()}
-                    aria-label="Restore purchases: sync subscription status with billing for this account"
-                    style={{
-                      background: "none",
-                      border: "none",
-                      padding: 0,
-                      color: "var(--ink-soft)",
-                      fontSize: 11.5,
-                      fontWeight: 400,
-                      cursor: restoreDisabled ? "not-allowed" : "pointer",
-                      textDecoration: "underline",
-                      fontFamily: "inherit",
-                    }}
-                  >
-                    {restoreLoading ? "Syncing…" : "Restore purchases"}
-                  </button>
-                  <p style={{ fontSize: 11, color: "rgba(107, 91, 69, 0.72)", margin: 0, lineHeight: 1.35, textAlign: "center" }}>
-                    Already subscribed? Restore your access.
-                  </p>
-                </>
+                <button
+                  type="button"
+                  disabled={restoreDisabled}
+                  onClick={() => void handleRefreshSubscriptionStatus()}
+                  aria-label="Restore purchases: sync subscription status with billing for this account"
+                  style={{
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    color: "rgba(107, 91, 69, 0.62)",
+                    fontSize: 11.5,
+                    fontWeight: 400,
+                    cursor: restoreDisabled ? "not-allowed" : "pointer",
+                    textDecoration: "underline",
+                    textUnderlineOffset: 2,
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {restoreLoading ? "Syncing purchases…" : "Already subscribed? Restore purchases"}
+                </button>
               ) : null}
             </div>
             {restoreMessage ? (
-              <p style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 6, textAlign: "center", lineHeight: 1.45 }}>
+              <p style={{ fontSize: 11.5, color: "rgba(107, 91, 69, 0.68)", margin: "7px 0 0", textAlign: "center", lineHeight: 1.4 }}>
                 {restoreMessage}
               </p>
             ) : null}
@@ -1109,6 +1143,9 @@ export function PaywallModal({
             >
               Create account to continue
             </h3>
+            <p style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.45, margin: "0 0 14px" }}>
+              We’ll save your Shed to this account before checkout starts.
+            </p>
             <input
               type="email"
               value={guestEmail}

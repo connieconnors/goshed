@@ -5,6 +5,7 @@ import {
   isMedicalMobility,
   getCarDonationPlacesQuery,
   isBulkyPickupDonationContext,
+  isElectronicsDonationContext,
 } from "@/lib/contextualSuggestions";
 
 function haversineKm(
@@ -26,6 +27,11 @@ function haversineKm(
 }
 
 type PlaceHit = { name: string; place_id: string; distance_mi: number };
+type ContextualPlacesResponse = {
+  places: PlaceHit[];
+  pickupPlaces: PlaceHit[];
+  status: "ok" | "unavailable";
+};
 
 /** Google may return the same venue under different `place_id`s across text queries. */
 function dedupePlacesByNameAndDistance(places: PlaceHit[]): PlaceHit[] {
@@ -67,13 +73,23 @@ async function fetchPlaces(
   const res = await fetch(url);
   const data = (await res.json()) as {
     status: string;
+    error_message?: string;
     results?: Array<{
       name: string;
       place_id: string;
       geometry?: { location: { lat: number; lng: number } };
     }>;
   };
-  if (data.status !== "OK" || !data.results?.length) return [];
+  if (data.status === "ZERO_RESULTS") return [];
+  if (data.status !== "OK") {
+    console.warn("[contextual-places] Google Places status:", {
+      query,
+      status: data.status,
+      error: data.error_message,
+    });
+    throw new Error(`Google Places unavailable: ${data.status}`);
+  }
+  if (!data.results?.length) return [];
   return data.results.map((place) => {
     const loc = place.geometry?.location;
     const distance_km = loc != null ? haversineKm(lat, lng, loc.lat, loc.lng) : 0;
@@ -86,19 +102,21 @@ async function fetchPlaces(
 export async function POST(request: NextRequest) {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) {
-    return NextResponse.json({ places: [], pickupPlaces: [] });
+    console.warn("[contextual-places] GOOGLE_PLACES_API_KEY missing");
+    return NextResponse.json({ places: [], pickupPlaces: [], status: "unavailable" } satisfies ContextualPlacesResponse);
   }
 
   let body: { lat?: number; lng?: number; item_label?: string; value_range?: string; description?: string };
   try {
     body = await request.json();
-  } catch {
-    return NextResponse.json({ places: [], pickupPlaces: [] });
+  } catch (err) {
+    console.warn("[contextual-places] invalid JSON:", err);
+    return NextResponse.json({ places: [], pickupPlaces: [], status: "unavailable" } satisfies ContextualPlacesResponse);
   }
 
   const { lat, lng, item_label, value_range, description } = body;
   if (lat == null || lng == null) {
-    return NextResponse.json({ places: [], pickupPlaces: [] });
+    return NextResponse.json({ places: [], pickupPlaces: [], status: "unavailable" } satisfies ContextualPlacesResponse);
   }
 
   try {
@@ -119,7 +137,7 @@ export async function POST(request: NextRequest) {
           .filter((p) => !isLikelyVehicleDonationResult(p.name))
           .sort((a, b) => a.distance_mi - b.distance_mi)
       ).slice(0, 8);
-      return NextResponse.json({ places, pickupPlaces: [] });
+      return NextResponse.json({ places, pickupPlaces: [], status: "ok" } satisfies ContextualPlacesResponse);
     }
 
     const fabric = isFabricBedding(item_label);
@@ -144,7 +162,7 @@ export async function POST(request: NextRequest) {
           .filter((p) => !isLikelyVehicleDonationResult(p.name))
           .sort((a, b) => a.distance_mi - b.distance_mi)
       ).slice(0, 8);
-      return NextResponse.json({ places, pickupPlaces: [] });
+      return NextResponse.json({ places, pickupPlaces: [], status: "ok" } satisfies ContextualPlacesResponse);
     }
 
     const bulkyPickup = isBulkyPickupDonationContext(item_label, description);
@@ -178,6 +196,7 @@ export async function POST(request: NextRequest) {
       : Promise.resolve([]);
 
     const medical = isMedicalMobility(item_label);
+    const electronics = isElectronicsDonationContext(item_label, description);
     const carDonationQuery = getCarDonationPlacesQuery(item_label, value_range, description);
 
     /** Primary donation discovery (Donate flow only — consignment is Sell-only via /api/places/consignment). */
@@ -188,6 +207,10 @@ export async function POST(request: NextRequest) {
     ];
     if (medical) {
       queryPromises.push(fetchPlaces(apiKey, "senior center", lat, lng));
+    }
+    if (electronics) {
+      queryPromises.push(fetchPlaces(apiKey, "electronics recycling drop off", lat, lng));
+      queryPromises.push(fetchPlaces(apiKey, "Goodwill electronics donation", lat, lng));
     }
     if (carDonationQuery) {
       queryPromises.push(fetchPlaces(apiKey, carDonationQuery, lat, lng));
@@ -215,8 +238,9 @@ export async function POST(request: NextRequest) {
     const pickupDeduped = dedupePlacesByNameAndDistance(
       pickupPlaces.filter((p) => !isLikelyVehicleDonationResult(p.name))
     );
-    return NextResponse.json({ places, pickupPlaces: pickupDeduped });
-  } catch {
-    return NextResponse.json({ places: [], pickupPlaces: [] });
+    return NextResponse.json({ places, pickupPlaces: pickupDeduped, status: "ok" } satisfies ContextualPlacesResponse);
+  } catch (err) {
+    console.error("[contextual-places] place lookup failed:", err);
+    return NextResponse.json({ places: [], pickupPlaces: [], status: "unavailable" } satisfies ContextualPlacesResponse);
   }
 }

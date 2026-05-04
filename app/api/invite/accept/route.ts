@@ -28,18 +28,20 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Invite not found" }, { status: 404 });
   }
 
-  if (invite.status !== "pending") {
+  if (invite.status === "revoked") {
     return NextResponse.json({ error: "Invite not found" }, { status: 404 });
   }
 
-  const { error: updateError } = await supabase
-    .from("shed_invites")
-    .update({ status: "accepted" })
-    .eq("id", invite.id);
+  if (invite.status === "pending") {
+    const { error: updateError } = await supabase
+      .from("shed_invites")
+      .update({ status: "accepted" })
+      .eq("id", invite.id);
 
-  if (updateError) {
-    console.error("[api/invite/accept] update error:", updateError);
-    return NextResponse.json({ error: "Failed to accept invite" }, { status: 500 });
+    if (updateError) {
+      console.error("[api/invite/accept] update error:", updateError);
+      return NextResponse.json({ error: "Failed to accept invite" }, { status: 500 });
+    }
   }
 
   const { data: items, error: itemsError } = await supabase

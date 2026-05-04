@@ -5,7 +5,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuthSession } from "@/lib/auth-session-context";
 import { PaywallModal } from "@/app/components/PaywallModal";
+import { TipsComingSoonModal } from "@/app/components/TipsComingSoonModal";
 import { FREE_LOGGED_IN_ITEM_LIMIT } from "@/lib/freeTier";
+import { migrateGuestShedItemsToAccount } from "@/lib/guestShedStorage";
+import {
+  getRecommendationTip,
+  isElectronicsTipCandidate,
+  TIP_LINKS,
+  type TipLink,
+} from "@/lib/tips";
 
 type ShedItem = {
   id: string;
@@ -20,13 +28,15 @@ type ShedItem = {
   cleared_at?: string | null;
 };
 
-const BUCKET_ORDER = ["sell", "donate", "gift", "curb"] as const;
+const BUCKET_ORDER = ["sell", "donate", "gift", "keep", "repurpose", "curb"] as const;
 type BucketId = (typeof BUCKET_ORDER)[number];
 
 const BUCKET_TITLES: Record<BucketId, string> = {
   sell: "Sell",
   donate: "Donate",
   gift: "Gift",
+  keep: "Keep",
+  repurpose: "Repurpose",
   curb: "Curb",
 };
 
@@ -99,13 +109,15 @@ function PileItemLink({ item }: { item: ShedItem }) {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: "8px",
+              fontSize: "18px",
+              fontFamily: "var(--font-cormorant)",
+              fontStyle: "italic",
               color: "var(--ink-soft)",
               textAlign: "center",
               padding: "4px",
             }}
           >
-            —
+            {item.item_label.trim().charAt(0).toLowerCase() || "g"}
           </div>
         )}
       </div>
@@ -132,6 +144,7 @@ export default function ShedPage() {
   const [loading, setLoading] = useState(true);
   const [clearedExpanded, setClearedExpanded] = useState(true);
   const [showPaywallModal, setShowPaywallModal] = useState(false);
+  const [activeTip, setActiveTip] = useState<TipLink | null>(null);
 
   const refetchItems = useCallback(() => {
     fetch("/api/items", { credentials: "include" })
@@ -152,7 +165,11 @@ export default function ShedPage() {
       router.replace("/set-password?redirect=/shed");
       return;
     }
-    fetch("/api/items", { credentials: "include" })
+    migrateGuestShedItemsToAccount()
+      .then((migration) => {
+        if (migration.migrated > 0) void refreshAuthSession();
+        return fetch("/api/items", { credentials: "include" });
+      })
       .then((res) => {
         if (cancelled) return null;
         if (!res.ok) return [];
@@ -173,13 +190,15 @@ export default function ShedPage() {
     };
     // Use stable user id — `sessionUser` object identity can churn (e.g. auth context)
     // and refetching the full list would overwrite optimistic clears mid-flight.
-  }, [router, sessionLoading, sessionUser?.id]);
+  }, [router, sessionLoading, sessionUser?.id, refreshAuthSession]);
 
   const { bucketMap, clearedItems, buckets } = useMemo(() => {
     const map: Record<BucketId, ShedItem[]> = {
       sell: [],
       donate: [],
       gift: [],
+      keep: [],
+      repurpose: [],
       curb: [],
     };
     const cleared: ShedItem[] = [];
@@ -189,7 +208,7 @@ export default function ShedPage() {
         continue;
       }
       const r = item.recommendation as string;
-      if (r === "sell" || r === "donate" || r === "gift" || r === "curb") {
+      if (r === "sell" || r === "donate" || r === "gift" || r === "keep" || r === "repurpose" || r === "curb") {
         map[r as BucketId].push(item);
       }
     }
@@ -209,6 +228,18 @@ export default function ShedPage() {
     void refreshAuthSession();
     refetchItems();
   }, [refreshAuthSession, refetchItems]);
+
+  const tipButtonStyle = {
+    border: "none",
+    background: "transparent",
+    padding: 0,
+    color: "var(--accent)",
+    fontSize: "11px",
+    fontFamily: "var(--font-body)",
+    textDecoration: "underline",
+    textUnderlineOffset: 2,
+    cursor: "pointer",
+  } as const;
 
   if (!sessionLoading && !sessionUser) {
     return null;
@@ -347,10 +378,12 @@ export default function ShedPage() {
         ) : null}
 
         <div style={{ display: "flex", flexDirection: "column", gap: "10px", paddingBottom: "0.5rem" }}>
-          {(["sell", "donate", "gift"] as const).map((id) => {
+          {BUCKET_ORDER.map((id) => {
             const pile = bucketMap[id];
             if (pile.length === 0) return null;
             const sellRange = id === "sell" ? sellPileValueRange(pile) : null;
+            const primaryTip = getRecommendationTip(id);
+            const hasElectronics = pile.some((item) => isElectronicsTipCandidate(item.item_label));
             return (
               <article
                 key={id}
@@ -367,6 +400,7 @@ export default function ShedPage() {
                     flexDirection: "row",
                     alignItems: "baseline",
                     flexWrap: "wrap",
+                    gap: "0.375rem",
                     padding: "0.625rem 0.875rem",
                     borderBottom: "1px solid var(--surface2)",
                   }}
@@ -386,7 +420,6 @@ export default function ShedPage() {
                     style={{
                       fontSize: "11px",
                       color: "var(--ink-soft)",
-                      marginLeft: "0.375rem",
                       fontFamily: "var(--font-body)",
                     }}
                   >
@@ -397,12 +430,22 @@ export default function ShedPage() {
                       style={{
                         fontSize: "11px",
                         color: "var(--ink-soft)",
-                        marginLeft: "0.375rem",
                         fontFamily: "var(--font-body)",
                       }}
                     >
                       {sellRange}
                     </span>
+                  ) : null}
+                  <span style={{ flex: "1 1 auto" }} />
+                  {primaryTip ? (
+                    <button type="button" onClick={() => setActiveTip(primaryTip)} style={tipButtonStyle}>
+                      {primaryTip.label}
+                    </button>
+                  ) : null}
+                  {hasElectronics ? (
+                    <button type="button" onClick={() => setActiveTip(TIP_LINKS.electronics)} style={tipButtonStyle}>
+                      Electronics Tips
+                    </button>
                   ) : null}
                 </div>
                 <div className="goshed-piles-row" role="list">
@@ -515,13 +558,15 @@ export default function ShedPage() {
                                 display: "flex",
                                 alignItems: "center",
                                 justifyContent: "center",
-                                fontSize: "8px",
+                                fontSize: "18px",
+                                fontFamily: "var(--font-cormorant)",
+                                fontStyle: "italic",
                                 color: "var(--ink-soft)",
                                 textAlign: "center",
                                 padding: "4px",
                               }}
                             >
-                              —
+                              {item.item_label.trim().charAt(0).toLowerCase() || "g"}
                             </div>
                           )}
                         </div>
@@ -558,55 +603,6 @@ export default function ShedPage() {
             </article>
           ) : null}
 
-          {bucketMap.curb.length > 0 ? (
-            <article
-              key="curb"
-              style={{
-                background: "var(--white)",
-                borderRadius: "12px",
-                border: "1px solid var(--surface2)",
-                overflow: "hidden",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "row",
-                  alignItems: "baseline",
-                  flexWrap: "wrap",
-                  padding: "0.625rem 0.875rem",
-                  borderBottom: "1px solid var(--surface2)",
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: "14px",
-                    color: "var(--ink)",
-                    letterSpacing: "-0.01em",
-                    fontFamily: "var(--font-body)",
-                    fontWeight: 500,
-                  }}
-                >
-                  {BUCKET_TITLES.curb}
-                </span>
-                <span
-                  style={{
-                    fontSize: "11px",
-                    color: "var(--ink-soft)",
-                    marginLeft: "0.375rem",
-                    fontFamily: "var(--font-body)",
-                  }}
-                >
-                  {bucketMap.curb.length}
-                </span>
-              </div>
-              <div className="goshed-piles-row" role="list">
-                {bucketMap.curb.map((item) => (
-                  <PileItemLink key={item.id} item={item} />
-                ))}
-              </div>
-            </article>
-          ) : null}
         </div>
 
         {buckets.length === 0 && clearedItems.length === 0 ? (
@@ -629,6 +625,7 @@ export default function ShedPage() {
           </Link>
         </div>
       </div>
+      <TipsComingSoonModal tip={activeTip} onClose={() => setActiveTip(null)} />
     </main>
   );
 }

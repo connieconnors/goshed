@@ -58,7 +58,7 @@ function JoinContent() {
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
           const msg = typeof body?.error === "string" ? body.error : null;
-          if (res.status === 404) setError("This invite link is invalid or has already been used.");
+          if (res.status === 404) setError("This invite link is invalid or no longer active.");
           else setError(msg || "Something went wrong.");
           return null;
         }

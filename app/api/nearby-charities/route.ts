@@ -70,8 +70,9 @@ export async function POST(request: NextRequest) {
   let body: { lat?: number; lng?: number; item_label?: string; item_category?: string };
   try {
     body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  } catch (err) {
+    console.warn("[nearby-charities] invalid JSON:", err);
+    return NextResponse.json({ local: [], national: [], source: "unavailable" });
   }
 
   const { lat, lng, item_label, item_category } = body;
@@ -84,7 +85,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       local: [],
       national,
-      source: "national_only",
+      source: "location_unavailable",
     });
   }
 
@@ -93,7 +94,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       local: [],
       national,
-      source: "national_only",
+      source: "google_unavailable",
     });
   }
 
@@ -107,7 +108,7 @@ export async function POST(request: NextRequest) {
       opening_hours?: { open_now: boolean };
       geometry?: { location: { lat: number; lng: number } };
     };
-    type TextSearchResponse = { results?: PlaceResult[]; status: string };
+    type TextSearchResponse = { results?: PlaceResult[]; status: string; error_message?: string };
 
     const queries = [
       `Goodwill near ${lat},${lng}`,
@@ -127,7 +128,12 @@ export async function POST(request: NextRequest) {
       )
     );
 
-    console.log("[nearby-charities] Google Places full response:", results.map((data, i) => ({ query: queries[i], status: data.status, results: data.results })));
+    const badStatuses = results
+      .map((data, i) => ({ query: queries[i], status: data.status, error: data.error_message }))
+      .filter((row) => row.status !== "OK" && row.status !== "ZERO_RESULTS");
+    if (badStatuses.length > 0) {
+      console.warn("[nearby-charities] Google Places non-OK status:", badStatuses);
+    }
 
     const userLat = lat as number;
     const userLng = lng as number;
@@ -155,7 +161,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       local,
       national,
-      source: "google_places",
+      source: badStatuses.length > 0 ? "google_partial" : "google_places",
       item_label: item_label ?? null,
     });
   } catch (err) {
@@ -163,7 +169,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       local: [],
       national,
-      source: "national_only",
+      source: "google_unavailable",
     });
   }
 }

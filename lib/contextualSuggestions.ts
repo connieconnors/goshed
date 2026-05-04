@@ -87,6 +87,14 @@ export function isMedicalMobility(itemLabel: string | undefined): boolean {
   );
 }
 
+/** Electronics often need donation acceptance checks or recycling options, especially TVs. */
+export function isElectronicsDonationContext(itemLabel: string | undefined, description?: string): boolean {
+  const t = itemText(itemLabel, description);
+  return /\b(electronics?|tv|television|monitor|computer|desktop|laptop|tablet|ipad|phone|smartphone|iphone|android|printer|scanner|stereo|receiver|speaker|dvd player|blu[-\s]?ray|vcr|camera|game console|xbox|playstation|nintendo)\b/.test(
+    t
+  );
+}
+
 /**
  * Consignment-relevant: resale upper bound over $30, or wearable clothing/accessories (not bedding/linens).
  */
@@ -190,8 +198,10 @@ export function getPlacesSearchQuery(itemLabel: string, description?: string, va
     return "Goodwill clothing donation";
   }
 
-  if (/\b(electronics?|tv|television|computer|laptop|phone|monitor|printer)\b/.test(text)) {
-    return "Goodwill electronics recycling";
+  if (isElectronicsDonationContext(itemLabel, description)) {
+    return /\b(tv|television|monitor|printer|desktop|computer)\b/.test(text)
+      ? "electronics recycling donation"
+      : "Goodwill electronics donation recycling";
   }
 
   if (/\b(toy|toys|game|games|puzzle|stuffed)\b/.test(text)) {

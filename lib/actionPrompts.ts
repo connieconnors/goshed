@@ -7,6 +7,7 @@
 import { parseValueRange } from "./parseValueRange";
 import {
   isBulkyPickupDonationContext,
+  isElectronicsDonationContext,
   isShelterTextileContext,
 } from "./contextualSuggestions";
 
@@ -54,8 +55,8 @@ export const ACTION_PROMPTS: Record<ActionPromptType, readonly [string, string, 
   ],
   repurpose: [
     "Don't let this one sit. Give yourself 48 hours or it becomes clutter again. What's the first step you can do right now?",
-    "Pick one small step and do it today. Cut, paint, or move it to where it'll get used. Two days of inaction and it's back to clutter.",
-    "One concrete step in the next 48 hours — or admit it's not happening and gift, donate, or curb it. Your call.",
+    "Pick one small step and do it today. Give it a new job, move it to where it'll get used, or pass it along before it turns back into clutter.",
+    "One concrete step in the next 48 hours — use it differently, give it a new home, or admit it's not happening and let it go.",
   ],
   trash: [
     "Not everything deserves a second life. Walk it to the bin now so it doesn't creep back in.",
@@ -68,6 +69,11 @@ export const ACTION_PROMPTS: Record<ActionPromptType, readonly [string, string, 
 function isPlateLike(item_label: string, description: string): boolean {
   const text = `${item_label} ${description}`.toLowerCase();
   return /\b(plate|platter|serving (dish|tray|bowl)|dish|charger)\b/.test(text);
+}
+
+function isBagLike(item_label: string, description: string): boolean {
+  const text = `${item_label} ${description}`.toLowerCase();
+  return /\b(handbag|purse|tote|backpack|satchel|duffel|duffle|bag)\b/.test(text);
 }
 
 const CONSIGNMENT_SENTENCE =
@@ -91,8 +97,18 @@ export function getRandomActionPrompt(
     if (isShelterTextileContext(context.item_label, context.description)) {
       return "Animal shelters and rescues use bedding like this — call ahead, then drop it off (they don’t pick up). Most thrift stores won’t take used pillows, plain sheets, or worn blankets.";
     }
+    if (isElectronicsDonationContext(context.item_label, context.description)) {
+      return "Check the model/date label and confirm it works before you donate it. Many centers limit older electronics, especially TVs, so call ahead or use an electronics recycling drop-off.";
+    }
     if (isBulkyPickupDonationContext(context.item_label, context.description)) {
       return "If it’s too awkward to carry, look for pickup before you move it twice.";
+    }
+  }
+  if (type === "repurpose" && context) {
+    const label = context.item_label ?? "";
+    const desc = context.description ?? "";
+    if (isBagLike(label, desc)) {
+      return "Give it one specific job: returns bag by the door, travel pouch, car organizer, or donation drop-off bag. If it doesn't earn a role this week, let it go.";
     }
   }
   if (type === "sell") {

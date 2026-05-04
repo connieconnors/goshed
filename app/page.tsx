@@ -25,6 +25,13 @@ import {
   markGuestGateDismissedUntilCount,
   setStoredGuestAnalysisCount,
 } from '@/lib/guestGateStorage';
+import {
+  addGuestShedItem,
+  hasGuestShedItems,
+  migrateGuestShedItemsToAccount,
+  updateGuestShedItem,
+} from '@/lib/guestShedStorage';
+import { isElectronicsTipCandidate } from '@/lib/tips';
 
 type AnalyzeResult = {
   item_label: string;
@@ -165,6 +172,38 @@ function resizeAndToDataUrl(file: File): Promise<string> {
   });
 }
 
+function createGuestShedThumbnail(dataUrl: string | null): Promise<string | null> {
+  return new Promise((resolve) => {
+    if (!dataUrl) {
+      resolve(null);
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      const max = 320;
+      const ratio = Math.min(1, max / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
+      const w = Math.max(1, Math.round((img.naturalWidth || 1) * ratio));
+      const h = Math.max(1, Math.round((img.naturalHeight || 1) * ratio));
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(null);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, w, h);
+      try {
+        resolve(canvas.toDataURL('image/jpeg', 0.58));
+      } catch {
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = dataUrl;
+  });
+}
+
 /** Return the first sentence of a string (up to and including the first period). */
 function firstSentence(text: string): string {
   const trimmed = text.trim();
@@ -199,6 +238,7 @@ function HomeContent() {
   const analysisImageDataUrlRef = useRef<string | null>(null);
   const savedForItemRef = useRef<string | null>(null);
   const savedItemIdRef = useRef<string | null>(null);
+  const guestSavedItemClientIdRef = useRef<string | null>(null);
   /** Mirrors server `items.bucket_change_count` for the current saved item (home flow). */
   const savedItemBucketChangeCountRef = useRef(0);
   type HomePendingRec = {
@@ -228,6 +268,7 @@ function HomeContent() {
   const [pickupDonationPlaces, setPickupDonationPlaces] = useState<{ name: string; distance_mi: number; place_id: string }[]>([]);
   /** True after donate-flow geolocation + contextual-places request finishes (avoids flashing empty-state while loading). */
   const [donationPlacesFetchDone, setDonationPlacesFetchDone] = useState(false);
+  const [donationPlacesFallback, setDonationPlacesFallback] = useState<"permission" | "unavailable" | "empty" | null>(null);
   const [rainNext24h, setRainNext24h] = useState<boolean | null>(null);
   const [showPaywallModal, setShowPaywallModal] = useState(false);
   const [showFreePlanNudge, setShowFreePlanNudge] = useState(false);
@@ -283,6 +324,16 @@ function HomeContent() {
       setShowGuestGateModal(true);
     }
   }, [effectiveGuest]);
+
+  useEffect(() => {
+    if (isLoggedIn !== true || !hasGuestShedItems()) return;
+    if (result?.item_label && guestSavedItemClientIdRef.current) {
+      lastSavedItemKey = result.item_label;
+    }
+    void migrateGuestShedItemsToAccount()
+      .then(() => refreshAuthSession())
+      .catch((err) => console.error('[guest shed] migration failed:', err));
+  }, [isLoggedIn, refreshAuthSession, result?.item_label]);
 
   useEffect(() => {
     return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
@@ -377,12 +428,15 @@ function HomeContent() {
       setContextualPlaces([]);
       setPickupDonationPlaces([]);
       setDonationPlacesFetchDone(false);
+      setDonationPlacesFallback(null);
       return;
     }
     setDonationPlacesFetchDone(false);
+    setDonationPlacesFallback(null);
     if (!navigator.geolocation) {
       setContextualPlaces([]);
       setPickupDonationPlaces([]);
+      setDonationPlacesFallback("permission");
       setDonationPlacesFetchDone(true);
       return;
     }
@@ -402,19 +456,31 @@ function HomeContent() {
             description: result?.description,
           }),
         })
-          .then((res) => res.json())
+          .then((res) => (res.ok ? res.json() : Promise.reject(new Error("contextual_places_unavailable"))))
           .then(
             (data: {
               places?: { name: string; distance_mi: number; place_id: string }[];
               pickupPlaces?: { name: string; distance_mi: number; place_id: string }[];
+              status?: "ok" | "unavailable";
             }) => {
-              setContextualPlaces(data.places ?? []);
-              setPickupDonationPlaces(data.pickupPlaces ?? []);
+              const places = data.places ?? [];
+              const pickupPlaces = data.pickupPlaces ?? [];
+              setContextualPlaces(places);
+              setPickupDonationPlaces(pickupPlaces);
+              setDonationPlacesFallback(
+                data.status === "unavailable"
+                  ? "unavailable"
+                  : places.length === 0 && pickupPlaces.length === 0
+                    ? "empty"
+                    : null
+              );
             }
           )
-          .catch(() => {
+          .catch((err) => {
+            console.warn("[home] donation places unavailable:", err);
             setContextualPlaces([]);
             setPickupDonationPlaces([]);
+            setDonationPlacesFallback("unavailable");
           })
           .finally(() => {
             setDonationPlacesFetchDone(true);
@@ -423,6 +489,7 @@ function HomeContent() {
       () => {
         setContextualPlaces([]);
         setPickupDonationPlaces([]);
+        setDonationPlacesFallback("permission");
         setDonationPlacesFetchDone(true);
       }
     );
@@ -489,7 +556,14 @@ function HomeContent() {
   };
 
   /** Blocks until the same AI consent sheet as initial load is accepted (if `goshed_ai_consent` is not set). */
-  const waitForAiConsentBeforeGuestPurchase = useCallback(async () => {
+  const prepareGuestPurchase = useCallback(async () => {
+    const migration = await migrateGuestShedItemsToAccount();
+    if (migration.failed > 0) {
+      throw new Error("Create your account first so we can save your Shed before checkout.");
+    }
+    if (migration.migrated > 0) {
+      await refreshAuthSession();
+    }
     if (typeof window !== "undefined" && localStorage.getItem("goshed_ai_consent")) {
       return;
     }
@@ -500,7 +574,7 @@ function HomeContent() {
       aiConsentGuestPurchaseResolverRef.current = resolve;
       setShowAiConsent(true);
     });
-  }, []);
+  }, [refreshAuthSession]);
 
   /** Run analyze + recommend with an existing data URL (e.g. after paywall success). */
   const runAnalyzeWithDataUrl = useCallback(async (dataUrl: string) => {
@@ -579,7 +653,18 @@ function HomeContent() {
           setRecommendError('retry');
           return;
         }
-        setRecommendResult(recData as RecommendResult);
+        const recommendation = recData as RecommendResult;
+        setRecommendResult(recommendation);
+        if (effectiveGuest) {
+          const guestPhotoUrl = await createGuestShedThumbnail(analysisImageDataUrlRef.current);
+          guestSavedItemClientIdRef.current = addGuestShedItem({
+            photo_url: guestPhotoUrl,
+            item_label: analysis.item_label,
+            value_range_raw: analysis.value_range,
+            recommendation: recommendation.recommendation,
+            notes: refinementNote.trim() || null,
+          });
+        }
         recordGuestFlowComplete();
       } catch (recErr) {
         console.error('Recommend request failed:', recErr);
@@ -592,7 +677,7 @@ function HomeContent() {
     } finally {
       setLoading(false);
     }
-  }, [refinementNote, isLoggedIn, forceGuestMode, recordGuestFlowComplete]);
+  }, [refinementNote, effectiveGuest, recordGuestFlowComplete]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -617,6 +702,7 @@ function HomeContent() {
     setContextualPlaces([]);
     savedForItemRef.current = null;
     savedItemIdRef.current = null;
+    guestSavedItemClientIdRef.current = null;
     savedItemBucketChangeCountRef.current = 0;
     lastSavedItemKey = null;
     confirmedActionPromptRef.current = {};
@@ -662,6 +748,7 @@ function HomeContent() {
     setRainNext24h(null);
     savedForItemRef.current = null;
     savedItemIdRef.current = null;
+    guestSavedItemClientIdRef.current = null;
     savedItemBucketChangeCountRef.current = 0;
     lastSavedItemKey = null;
     confirmedActionPromptRef.current = {};
@@ -702,6 +789,7 @@ function HomeContent() {
   // lastSavedItemKey survives Strict Mode remount so we only POST once per item.
   useEffect(() => {
     if (!result || !recommendResult || isLoggedIn !== true) return;
+    if (guestSavedItemClientIdRef.current) return;
     const key = result.item_label;
     if (lastSavedItemKey === key) return;
     lastSavedItemKey = key;
@@ -742,7 +830,7 @@ function HomeContent() {
           .catch(() => {});
       })
       .catch((err) => console.error('[shed] save item failed:', err));
-  }, [result, recommendResult, isLoggedIn, refreshAuthSession]);
+  }, [result, recommendResult, isLoggedIn, refinementNote, refreshAuthSession]);
 
   useEffect(() => {
     if (chosenDecision !== 'gift') {
@@ -973,7 +1061,14 @@ function HomeContent() {
         setRecommendError('retry');
         return;
       }
-      setRecommendResult(recData as RecommendResult);
+      const nextRec = recData as RecommendResult;
+      setRecommendResult(nextRec);
+      if (isLoggedIn !== true) {
+        updateGuestShedItem(guestSavedItemClientIdRef.current, {
+          recommendation: nextRec.recommendation,
+          notes: refinementNote.trim() || null,
+        });
+      }
     } catch {
       setRecommendError('retry');
     } finally {
@@ -1034,6 +1129,12 @@ function HomeContent() {
 
       setRecommendResult(nextRec);
       setChosenDecision(optionId);
+      if (!loggedIn) {
+        updateGuestShedItem(guestSavedItemClientIdRef.current, {
+          recommendation: optionId,
+          notes: refinementNote.trim() || null,
+        });
+      }
       if (sid && loggedIn) {
         const ok = await patchSavedItemRecommendation(optionId);
         if (!ok) {
@@ -1064,16 +1165,16 @@ function HomeContent() {
   };
   const guestGateBody =
     guestGateCount >= FREE_LOGGED_IN_ITEM_LIMIT
-      ? `Create an account to save your first ${FREE_LOGGED_IN_ITEM_LIMIT} items, then choose a plan to keep going. Already have an account? Sign in and upgrade.`
+      ? `Create or sign in to save your Shed, then choose a plan to keep going.`
       : guestGateCount >= GUEST_GATE_REMINDER_COUNT
-        ? `Create a free account now so your first ${FREE_LOGGED_IN_ITEM_LIMIT} items are saved.`
+        ? "Create a free account now so your Shed is saved before you upgrade."
         : MOMENT_COPY.guestGateBody;
   const guestGateTitle =
     guestGateCount >= FREE_LOGGED_IN_ITEM_LIMIT
       ? "You've filled your free shed."
       : guestGateCount >= GUEST_GATE_REMINDER_COUNT
         ? "One item left in your free shed."
-        : "Keep your shed.";
+        : "Create a free account to save your Shed.";
   const guestGatePrimaryCta = guestGateCount >= FREE_LOGGED_IN_ITEM_LIMIT ? "Create account to continue" : "Create a free account";
   const showGuestGateSignInCta = guestGateCount >= FREE_LOGGED_IN_ITEM_LIMIT;
   const guestGateIsHardLimit = guestGateCount >= FREE_LOGGED_IN_ITEM_LIMIT;
@@ -1081,6 +1182,12 @@ function HomeContent() {
   const guestGateCreateAccountHref = guestGateIsHardLimit ? `/set-password?redirect=${guestGateAuthRedirect}` : "/set-password";
   const guestGateSignInHref = `/login?redirect=${guestGateAuthRedirect}`;
   const guestGateAlreadyAccountLabel = isLoggedIn === true ? "Continue to plans" : "I already have an account";
+  const donationFallbackMessage =
+    donationPlacesFallback === "permission"
+      ? "No nearby donation options found. Turn on location access or search locally."
+      : isElectronicsTipCandidate(result?.item_label)
+        ? "No nearby donation options found. Try donation centers, thrift stores, or electronics recycling nearby."
+        : "No nearby donation options found. Try donation centers or thrift stores nearby.";
 
   // Defer full UI until after mount so server and client render identical HTML and hydration never mismatches (e.g. with extensions that alter the DOM).
   const homeShellStyle: CSSProperties = {
@@ -1505,21 +1612,7 @@ function HomeContent() {
                             marginTop: 0,
                           }}
                         >
-                          {process.env.NODE_ENV === 'development' ? (
-                            <>
-                              No nearby donation results. Allow location for this site, set{' '}
-                              <code style={{ fontSize: '11px' }}>GOOGLE_PLACES_API_KEY</code> in{' '}
-                              <code style={{ fontSize: '11px' }}>.env.local</code>, then restart{' '}
-                              <code style={{ fontSize: '11px' }}>npm run dev</code>. Use{' '}
-                              <code style={{ fontSize: '11px' }}>http://localhost</code> (not LAN IP) if the browser
-                              blocks geolocation.
-                            </>
-                          ) : (
-                            <>
-                              We couldn&apos;t load nearby donation ideas. Allow location for this site in your
-                              browser settings, then try confirming Donate again.
-                            </>
-                          )}
+                          {donationFallbackMessage}
                         </p>
                       )}
                     {chosenDecision === 'donate' && pickupDonationPlaces.length > 0 && (
@@ -1680,7 +1773,7 @@ function HomeContent() {
         onPurchaseSuccess={handlePaywallSuccess}
         itemCount={paywallItemCount}
         voluntary={paywallVoluntary}
-        beforeGuestPurchase={waitForAiConsentBeforeGuestPurchase}
+        beforeGuestPurchase={prepareGuestPurchase}
       />
       {showFreePlanNudge && (
         <div

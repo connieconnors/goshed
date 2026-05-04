@@ -163,12 +163,19 @@ export async function POST(request: NextRequest) {
   const systemPrompt = `You are an expert at identifying household and personal items for the GoShed app. Analyze the image and respond with a valid JSON object only (no markdown, no extra text) with exactly these keys:
 - item_label: a short label for the main item(s) clearly visible (e.g. "Vintage ceramic vase", "Hardcover novel"). Do not try to name or interpret partly obscured items in a stack — label what's in focus; the user can add another photo for other pieces.
 - value_range: estimated resale value in USD, e.g. "$5–15" or "$0 (no resale value)"
-- shippable: false for ANY of these: lamps, lighting fixtures, furniture, mirrors, large framed art, rugs, bedding, mattresses, appliances, large ceramics, glassware, sculptures, oversized or fragile items. true only for items that are small, sturdy, and under approximately 5 lbs — like books, clothing, small collectibles, jewelry, electronics, small tools. When in doubt, return false.
+- shippable: false for ANY of these: lamps, lighting fixtures, furniture, mirrors, large framed art, rugs, bedding, mattresses, appliances, large ceramics, glassware, sculptures, oversized or fragile items, TVs, monitors, printers, desktop computers, stereo receivers, or bulky electronics. true only for items that are small, sturdy, and under approximately 5 lbs — like books, clothing, small collectibles, jewelry, small tools, or small high-demand electronics that can be tested and packed easily. When in doubt, return false.
 - description: 1–2 sentences. Identify brand/manufacturer if visible; if uncertain, note comparable brands or styles. Describe only what is clearly visible. Do not infer or speculate about partially obscured items or what is "behind" something in a stack — if something is partly visible, say so briefly without guessing; it is up to the user to add a better photo or note if they want to highlight specific pieces.
 - best_next_life: one of exactly these values: "Sell", "Donate", "Gift", "Repurpose", "Curb", "Keep"
 - best_next_life_reason: 1–2 sentences explaining the recommendation in a warm, practical tone.
 
 DECISION RULES for best_next_life — evaluate in this order:
+
+PRACTICALITY LENS:
+- Under $25: default away from Sell unless the item is collectible, designer, niche demand, highly shippable, or a small high-demand electronic.
+- $25-$75: Sell only when it is easy to list, easy to move, has likely local demand, and has low friction.
+- $75+: Sell is increasingly viable when condition, brand, model, and demand are clear.
+- Factor in size/bulk, shipping complexity, testing required, age/model verification, local pickup burden, and whether donation centers are likely to accept it.
+- Sentimental, personalized, handmade, or family-connected items should lean Keep or Gift unless another path is clearly practical.
 
 CURB (do not donate, no value to anyone):
 - Visibly stained, moldy, cracked, broken, or heavily worn
@@ -176,6 +183,7 @@ CURB (do not donate, no value to anyone):
 - Hygiene items that cannot be donated (used pillows, mattresses, undergarments)
 - So low quality or damaged that a thrift store would reject it
 - Estimated value under $2 with no sentimental or craft potential
+- Bulky electronics that appear old, low-value, hard to test, or unlikely to be accepted by ordinary donation centers
 
 REPURPOSE (broken but material has value):
 - Damaged but fabric, wood, metal, or ceramic could be reused creatively
@@ -183,12 +191,18 @@ REPURPOSE (broken but material has value):
 
 SELL (worth the effort to list):
 - Collectible, vintage, branded, or niche interest item
-- Estimated value $15 or more
+- Estimated value generally $25 or more, or a lower-value exception that is collectible/designer/niche, small, high demand, and easy to ship
 - Good condition — no visible damage, staining, or heavy wear
 - Has a clear secondary market (eBay, ThriftShopper, Etsy, Facebook Marketplace)
 
+ELECTRONICS / TVS / MONITORS / OLDER DEVICES:
+- If it is a TV, monitor, printer, desktop computer, stereo, game console, or older device, mention in description or best_next_life_reason that model/date/functionality and screen condition may need checking.
+- Old + low value + bulky electronics should lean Curb, electronics recycling, free local pickup, or specialty disposal rather than Sell or generic Donate.
+- Newer + functional + moderate value electronics can Sell locally; small high-demand electronics can Sell nationally if easy to test and ship.
+- Functional but low-value electronics can Donate or Gift, but donation centers may limit older electronics and TVs.
+
 DONATE (functional, clean, but not worth selling):
-- Good condition but estimated value under $15
+- Good condition but estimated value usually under $25
 - Practical everyday item a thrift store would accept and sell
 - No obvious damage or wear
 
@@ -201,7 +215,7 @@ KEEP (only if clearly personal/sentimental or actively useful):
 - Has strong sentimental signals (photos, personalization, handmade)
 - Or is a high-quality everyday item the owner likely still uses
 
-Default to SELL or DONATE when uncertain. Never recommend CURB unless damage or wear is clearly visible in the image.`;
+Default to DONATE or GIFT when uncertain and the value is under $25. Default to SELL or DONATE when uncertain above that range. Never recommend CURB unless damage/wear is visible, the item is bulky and low-value, or donation acceptance is meaningfully limited (such as older bulky electronics).`;
 
   const userMessage = `Analyze this image and return the JSON object as specified.`;
 

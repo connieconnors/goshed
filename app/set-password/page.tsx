@@ -6,6 +6,7 @@ import Link from "next/link";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
 import { useAuthSession } from "@/lib/auth-session-context";
 import { addEmailWithPassword } from "@/lib/authPasswordHint";
+import { migrateGuestShedItemsToAccount } from "@/lib/guestShedStorage";
 
 const LAST_LOGIN_EMAIL_KEY = "goshed_last_login_email";
 
@@ -48,6 +49,8 @@ function SetPasswordForm() {
   useEffect(() => {
     if (!mounted || authSessionLoading || !sessionUser) return;
     redirectHome();
+    const fallback = window.setTimeout(() => redirectHome(), 900);
+    return () => window.clearTimeout(fallback);
   }, [mounted, authSessionLoading, sessionUser, redirectHome]);
 
   useEffect(() => {
@@ -112,6 +115,12 @@ function SetPasswordForm() {
       }
       addEmailWithPassword(emailNorm);
       await refreshAuthSession();
+      const migration = await migrateGuestShedItemsToAccount();
+      if (migration.failed > 0) {
+        setError("Account created, but we couldn't save your guest Shed yet. Try again before leaving this device.");
+        return;
+      }
+      if (migration.migrated > 0) await refreshAuthSession();
       redirectHome();
     } catch {
       setError("Something went wrong. Try again.");
@@ -133,6 +142,23 @@ function SetPasswordForm() {
     return (
       <div style={{ padding: "24px 40px 40px", textAlign: "center", fontFamily: "sans-serif" }}>
         <p style={{ color: "#666", fontSize: 16 }}>You’re signed in — taking you to GoShed…</p>
+        <button
+          type="button"
+          onClick={redirectHome}
+          style={{
+            marginTop: 12,
+            padding: "10px 14px",
+            borderRadius: 10,
+            border: "1px solid var(--soft)",
+            background: "var(--white)",
+            color: "var(--ink)",
+            fontFamily: "inherit",
+            fontSize: 14,
+            cursor: "pointer",
+          }}
+        >
+          Continue to GoShed
+        </button>
       </div>
     );
   }

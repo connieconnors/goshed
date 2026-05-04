@@ -4,7 +4,9 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
 import { SentimentalNudge } from "@/components/SentimentalNudge";
+import { TipsComingSoonModal } from "@/app/components/TipsComingSoonModal";
 import { useAuthSession } from "@/lib/auth-session-context";
+import { getTipsForItem, type TipLink } from "@/lib/tips";
 import {
   fetchConsignmentPlacesClient,
   type ConsignmentPlaceRow,
@@ -57,6 +59,7 @@ export default function ItemDetailPage() {
   const [itemConsignmentLoading, setItemConsignmentLoading] = useState(false);
   const [itemConsignmentPlaces, setItemConsignmentPlaces] = useState<ConsignmentPlaceRow[]>([]);
   const [pendingRecommendation, setPendingRecommendation] = useState<string | null>(null);
+  const [activeTip, setActiveTip] = useState<TipLink | null>(null);
 
   useEffect(() => {
     if (!id) {
@@ -238,6 +241,22 @@ export default function ItemDetailPage() {
     }
   };
 
+  const itemTips = getTipsForItem({
+    recommendation: item?.recommendation,
+    item_label: item?.item_label,
+  });
+
+  const tipButtonStyle = {
+    border: "1px solid rgba(196,168,130,0.42)",
+    background: "rgba(245,240,232,0.48)",
+    borderRadius: "999px",
+    padding: "5px 10px",
+    color: "var(--accent)",
+    fontSize: "12px",
+    fontFamily: "inherit",
+    cursor: "pointer",
+  } as const;
+
   if (loading) {
     return (
       <main style={{ minHeight: "100vh", background: "var(--bg)", padding: "48px 24px", display: "flex", justifyContent: "center", alignItems: "center" }}>
@@ -285,8 +304,20 @@ export default function ItemDetailPage() {
               style={{ width: "100%", maxHeight: "400px", objectFit: "cover", display: "block" }}
             />
           ) : (
-            <div style={{ width: "100%", height: "280px", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink-soft)", fontSize: "14px" }}>
-              No image
+            <div
+              style={{
+                width: "100%",
+                height: "280px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "var(--ink-soft)",
+                fontFamily: "var(--font-cormorant)",
+                fontSize: "42px",
+                fontStyle: "italic",
+              }}
+            >
+              {item.item_label.trim().charAt(0).toLowerCase() || "g"}
             </div>
           )}
         </div>
@@ -314,6 +345,20 @@ export default function ItemDetailPage() {
               {BADGE_LABELS[item.recommendation] ?? item.recommendation}
             </span>
           </p>
+          {itemTips.length > 0 ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "16px" }}>
+              {itemTips.map((tip) => (
+                <button
+                  key={tip.id}
+                  type="button"
+                  onClick={() => setActiveTip(tip)}
+                  style={tipButtonStyle}
+                >
+                  {tip.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
 
           {/* Recommendation rationale / notes */}
           {(item.notes && item.notes.trim()) ? (
@@ -517,6 +562,7 @@ export default function ItemDetailPage() {
         onMoveToKeepNoRemind={handleMoveToKeepNoRemind}
         onKeepGoing={handleSentimentalKeepGoing}
       />
+      <TipsComingSoonModal tip={activeTip} onClose={() => setActiveTip(null)} />
 
     </main>
   );

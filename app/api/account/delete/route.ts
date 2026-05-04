@@ -20,6 +20,7 @@ export async function POST() {
   }
 
   const userId = user.id;
+  const email = typeof user.email === "string" ? user.email.trim().toLowerCase() : null;
 
   const adminClient = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -37,6 +38,32 @@ export async function POST() {
   const { error: notesError } = await adminClient.from("life_notes").delete().eq("user_id", userId);
   if (notesError) {
     console.error("[api/account/delete] life_notes error:", notesError);
+    return NextResponse.json({ error: "Failed to delete account data" }, { status: 500 });
+  }
+
+  const { error: invitesError } = await adminClient
+    .from("shed_invites")
+    .delete()
+    .or(`owner_user_id.eq.${userId}${email ? `,invitee_email.eq.${email}` : ""}`);
+  if (invitesError) {
+    console.error("[api/account/delete] shed_invites error:", invitesError);
+    return NextResponse.json({ error: "Failed to delete account data" }, { status: 500 });
+  }
+
+  if (email) {
+    const { error: passwordHintError } = await adminClient
+      .from("user_password_set")
+      .delete()
+      .eq("email", email);
+    if (passwordHintError) {
+      console.error("[api/account/delete] user_password_set error:", passwordHintError);
+      return NextResponse.json({ error: "Failed to delete account data" }, { status: 500 });
+    }
+  }
+
+  const { error: profileError } = await adminClient.from("users").delete().eq("id", userId);
+  if (profileError) {
+    console.error("[api/account/delete] users error:", profileError);
     return NextResponse.json({ error: "Failed to delete account data" }, { status: 500 });
   }
 

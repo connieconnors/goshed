@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
 import { useAuthSession } from "@/lib/auth-session-context";
+import { migrateGuestShedItemsToAccount } from "@/lib/guestShedStorage";
 
 const LAST_LOGIN_EMAIL_KEY = "goshed_last_login_email";
 
@@ -52,6 +53,8 @@ function LoginForm() {
   useEffect(() => {
     if (!mounted || authSessionLoading || !sessionUser) return;
     redirectAfterLogin();
+    const fallback = window.setTimeout(() => redirectAfterLogin(), 900);
+    return () => window.clearTimeout(fallback);
   }, [mounted, authSessionLoading, sessionUser, redirectAfterLogin]);
 
   useEffect(() => {
@@ -83,6 +86,11 @@ function LoginForm() {
         /* non-blocking: login still succeeds even if profile sync fails */
       }
       localStorage.setItem(LAST_LOGIN_EMAIL_KEY, emailNorm);
+      const migration = await migrateGuestShedItemsToAccount();
+      if (migration.failed > 0) {
+        setSignInError("Signed in, but we couldn't save your guest Shed yet. Try again before leaving this device.");
+        return;
+      }
       redirectAfterLogin();
     } finally {
       setSigningIn(false);
@@ -101,7 +109,7 @@ function LoginForm() {
     try {
       const supabase = createSupabaseBrowserClient();
       const { error } = await supabase.auth.resetPasswordForEmail(emailNorm, {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `${window.location.origin}/auth/callback?next=/account`,
       });
       if (error) {
         setResetError(error.message || "Could not send reset email. Try again.");
@@ -126,6 +134,23 @@ function LoginForm() {
     return (
       <div style={{ padding: 40, textAlign: "center", fontFamily: "inherit", color: "var(--ink-soft)" }}>
         <p style={{ fontSize: 16 }}>Signed in — taking you to GoShed…</p>
+        <button
+          type="button"
+          onClick={redirectAfterLogin}
+          style={{
+            marginTop: 12,
+            padding: "10px 14px",
+            borderRadius: 10,
+            border: "1px solid var(--soft)",
+            background: "var(--white)",
+            color: "var(--ink)",
+            fontFamily: "inherit",
+            fontSize: 14,
+            cursor: "pointer",
+          }}
+        >
+          Continue to GoShed
+        </button>
       </div>
     );
   }
@@ -183,7 +208,7 @@ function LoginForm() {
 
       {resetSuccess ? (
         <p style={{ color: "var(--green)", fontSize: 14, marginBottom: 12, lineHeight: 1.45, fontWeight: 500 }}>
-          Check your email for a password reset link.
+          Check your email for a password reset link. If you do not see it, check your spam folder.
         </p>
       ) : null}
 
