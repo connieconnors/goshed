@@ -64,10 +64,32 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async (): Promise<AuthSessionSnapshot> => {
-    const res = await fetch("/api/auth/session", { credentials: "include", cache: "no-store" });
-    const raw = await res.json().catch(() => ({}));
-    const data = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
-    const snap = parseSessionJson(data);
+    const fallback: AuthSessionSnapshot = {
+      user: null,
+      itemCount: null,
+      isPro: false,
+      code: null,
+      welcomeSent: true,
+    };
+    let snap = fallback;
+    try {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 8000);
+      try {
+        const res = await fetch("/api/auth/session", {
+          credentials: "include",
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const raw = await res.json().catch(() => ({}));
+        const data = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+        snap = parseSessionJson(data);
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+    } catch (err) {
+      console.error("[AuthSessionProvider] session refresh failed", err);
+    }
     setUser(snap.user);
     setItemCount(snap.itemCount);
     setIsPro(snap.isPro);
@@ -79,8 +101,11 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      await refresh();
-      if (!cancelled) setLoading(false);
+      try {
+        await refresh();
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
     return () => {
       cancelled = true;

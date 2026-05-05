@@ -8,7 +8,7 @@
     "icon": "./public/app-store-icon-1024.png",
     "ios": {
       "bundleIdentifier": "com.thriftshopperinc.goshed",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "infoPlist": {
         "NSCameraUsageDescription": "GoShed uses your camera to photograph items so we can suggest what to do with them, like donate, sell, or gift.",
         "NSPhotoLibraryUsageDescription": "GoShed can use photos you pick from your library to identify items and suggest next steps.",

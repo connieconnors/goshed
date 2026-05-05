@@ -1,5 +1,5 @@
 import { Camera } from 'expo-camera';
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { WebView as WebViewType, WebViewMessageEvent } from 'react-native-webview';
@@ -9,7 +9,8 @@ import Purchases, { type PurchasesPackage, type PurchasesOfferings } from 'react
 /** Must match the string posted from the web app after “Got it” on the AI consent sheet (`app/page.tsx`). */
 const NATIVE_AI_CONSENT_MSG = 'goshed-native-ai-consent-accepted';
 
-const DEFAULT_PRODUCTION_WEB_APP_URL = 'https://goshed.app';
+const DEFAULT_PRODUCTION_WEB_APP_URL = 'https://www.goshed.app';
+const WEBVIEW_LOAD_TIMEOUT_MS = 20000;
 const REVENUECAT_IOS_API_KEY_SOURCE = process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY?.trim()
   ? 'EXPO_PUBLIC_REVENUECAT_IOS_API_KEY'
   : process.env.EXPO_PUBLIC_REVENUECAT_API_KEY?.trim()
@@ -71,11 +72,27 @@ export default function App() {
   }, []);
 
   const [urlIndex, setUrlIndex] = useState(0);
+  const [webViewKey, setWebViewKey] = useState(0);
+  const [webViewLoading, setWebViewLoading] = useState(true);
+  const [loadTimedOut, setLoadTimedOut] = useState(false);
   const appUrl = candidateUrls[urlIndex]!;
 
   const tryNextUrl = () => {
     setUrlIndex((prev) => (prev < candidateUrls.length - 1 ? prev + 1 : prev));
   };
+
+  const retryCurrentUrl = useCallback(() => {
+    setLoadTimedOut(false);
+    setWebViewLoading(true);
+    setWebViewKey((prev) => prev + 1);
+  }, []);
+
+  useEffect(() => {
+    if (!webViewLoading) return;
+    setLoadTimedOut(false);
+    const timeoutId = setTimeout(() => setLoadTimedOut(true), WEBVIEW_LOAD_TIMEOUT_MS);
+    return () => clearTimeout(timeoutId);
+  }, [appUrl, webViewKey, webViewLoading]);
 
   const shouldStartLoad = useCallback((request: { url: string }) => {
     const url = request.url;
@@ -283,36 +300,63 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
-      <WebView
-        ref={webViewRef}
-        source={{ uri: appUrl }}
-        originWhitelist={['*']}
-        automaticallyAdjustContentInsets={false}
-        contentInsetAdjustmentBehavior="never"
-        injectedJavaScriptBeforeContentLoaded={nativePlatformInjection}
-        startInLoadingState
-        onMessage={onWebViewMessage}
-        onShouldStartLoadWithRequest={shouldStartLoad}
-        onHttpError={tryNextUrl}
-        onError={tryNextUrl}
-        renderError={() => (
-          <View style={styles.errorWrap}>
-            <Text style={styles.title}>GoShed Web App Not Reachable</Text>
-            {__DEV__ ? (
-              <Text style={styles.body}>
-                Start your web app with `npm run dev` in the goshed project root.
-              </Text>
-            ) : (
-              <Text style={styles.body}>
-                Check your connection and try again. If the problem continues, visit goshed.app in Safari.
-              </Text>
-            )}
-            <Pressable style={styles.badge}>
-              <Text style={styles.badgeText}>{appUrl}</Text>
-            </Pressable>
-          </View>
-        )}
-      />
+      {loadTimedOut ? (
+        <View style={styles.errorWrap}>
+          <Text style={styles.title}>GoShed is taking too long to load</Text>
+          <Text style={styles.body}>
+            Check your connection and try again. If the problem continues, visit goshed.app in Safari.
+          </Text>
+          <Pressable style={styles.primaryButton} onPress={retryCurrentUrl}>
+            <Text style={styles.primaryButtonText}>Try again</Text>
+          </Pressable>
+          <Pressable style={styles.badge}>
+            <Text style={styles.badgeText}>{appUrl}</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <WebView
+          key={`${appUrl}-${webViewKey}`}
+          ref={webViewRef}
+          source={{ uri: appUrl }}
+          originWhitelist={['*']}
+          automaticallyAdjustContentInsets={false}
+          contentInsetAdjustmentBehavior="never"
+          injectedJavaScriptBeforeContentLoaded={nativePlatformInjection}
+          startInLoadingState
+          onLoadStart={() => {
+            setWebViewLoading(true);
+            setLoadTimedOut(false);
+          }}
+          onLoadEnd={() => {
+            setWebViewLoading(false);
+            setLoadTimedOut(false);
+          }}
+          onMessage={onWebViewMessage}
+          onShouldStartLoadWithRequest={shouldStartLoad}
+          onHttpError={tryNextUrl}
+          onError={tryNextUrl}
+          renderError={() => (
+            <View style={styles.errorWrap}>
+              <Text style={styles.title}>GoShed Web App Not Reachable</Text>
+              {__DEV__ ? (
+                <Text style={styles.body}>
+                  Start your web app with `npm run dev` in the goshed project root.
+                </Text>
+              ) : (
+                <Text style={styles.body}>
+                  Check your connection and try again. If the problem continues, visit goshed.app in Safari.
+                </Text>
+              )}
+              <Pressable style={styles.primaryButton} onPress={retryCurrentUrl}>
+                <Text style={styles.primaryButtonText}>Try again</Text>
+              </Pressable>
+              <Pressable style={styles.badge}>
+                <Text style={styles.badgeText}>{appUrl}</Text>
+              </Pressable>
+            </View>
+          )}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -341,6 +385,18 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     textAlign: 'center',
     color: '#374151',
+  },
+  primaryButton: {
+    marginTop: 18,
+    borderRadius: 999,
+    backgroundColor: '#59483c',
+    paddingHorizontal: 22,
+    paddingVertical: 11,
+  },
+  primaryButtonText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '600',
   },
   badge: {
     marginTop: 16,
