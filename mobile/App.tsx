@@ -293,7 +293,7 @@ export default function App() {
   }, [handleRevenueCatRequest]);
 
   return (
-    <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
       {loadTimedOut ? (
         <View style={styles.errorWrap}>
           <Text style={styles.title}>GoShed is taking too long to load</Text>
