@@ -52,12 +52,6 @@ function logRevenueCatDebug(message: string, details?: Record<string, unknown>) 
   console.log(`[RevenueCatBridge] ${message}`, details ?? '');
 }
 
-function productionWebAppUrl(): string {
-  const fromEnv = process.env.EXPO_PUBLIC_WEB_APP_URL?.trim();
-  const raw = fromEnv || DEFAULT_PRODUCTION_WEB_APP_URL;
-  return raw.replace(/\/+$/, '');
-}
-
 export default function App() {
   const webViewRef = useRef<WebViewType>(null);
   const configuredUserIdRef = useRef<string | null>(null);
@@ -68,7 +62,7 @@ export default function App() {
       const localUrls = [3000, 3001, 3002, 3003, 3004, 3005].map((port) => `http://${baseHost}:${port}`);
       return fromEnv ? [fromEnv, ...localUrls.filter((url) => url !== fromEnv)] : localUrls;
     }
-    return [productionWebAppUrl()];
+    return [DEFAULT_PRODUCTION_WEB_APP_URL];
   }, []);
 
   const [urlIndex, setUrlIndex] = useState(0);
