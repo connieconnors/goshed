@@ -36,6 +36,8 @@ const WEB_API_KEY =
   process.env.NEXT_PUBLIC_REVENUECAT_WEB_API_KEY?.trim() ||
   process.env.NEXT_PUBLIC_REVENUECAT_API_KEY?.trim() ||
   "";
+const APPLE_STANDARD_EULA_URL = "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/";
+const PRIVACY_POLICY_URL = "https://goshed.app/privacy";
 
 type CheckoutPackage =
   | { source: "web"; plan: "monthly" | "annual"; webPackage: Package }
@@ -927,7 +929,7 @@ export function PaywallModal({
                     cursor: signedIn && yearDisabled ? "not-allowed" : "pointer",
                   }}
                 >
-                  {purchasingPlan === "annual" ? "Processing…" : `Get the year — ${yearlyCtaPrice}`}
+                  {purchasingPlan === "annual" ? "Processing…" : `GoShed Pro Annual — ${yearlyCtaPrice}`}
                 </button>
                 <button
                   type="button"
@@ -946,7 +948,7 @@ export function PaywallModal({
                     fontFamily: "inherit",
                   }}
                 >
-                  {purchasingPlan === "monthly" ? "Processing…" : `Continue monthly — ${monthlyCtaPrice}`}
+                  {purchasingPlan === "monthly" ? "Processing…" : `GoShed Pro Monthly — ${monthlyCtaPrice}`}
                 </button>
                 {canDismiss ? (
                   <button
@@ -974,12 +976,12 @@ export function PaywallModal({
             </p>
             <p style={{ fontSize: 10, color: "rgba(107, 91, 69, 0.54)", margin: "9px 4px 0", textAlign: "center", lineHeight: 1.38 }}>
               Subscriptions renew automatically unless canceled at least 24 hours before the end of the current period. Payment is charged to your Apple ID, and you can manage or cancel in App Store account settings.{" "}
-              <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: "rgba(107, 91, 69, 0.68)", textDecoration: "underline" }}>
-                Terms
+              <a href={APPLE_STANDARD_EULA_URL} target="_blank" rel="noopener noreferrer" style={{ color: "rgba(107, 91, 69, 0.68)", textDecoration: "underline" }}>
+                Terms of Use
               </a>
               {" · "}
-              <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: "rgba(107, 91, 69, 0.68)", textDecoration: "underline" }}>
-                Privacy
+              <a href={PRIVACY_POLICY_URL} target="_blank" rel="noopener noreferrer" style={{ color: "rgba(107, 91, 69, 0.68)", textDecoration: "underline" }}>
+                Privacy Policy
               </a>
             </p>
             <div
@@ -1033,7 +1035,20 @@ export function PaywallModal({
                 >
                   {restoreLoading ? "Syncing purchases…" : "Already subscribed? Restore purchases"}
                 </button>
-              ) : null}
+              ) : (
+                <a
+                  href="/login?redirect=/account"
+                  style={{
+                    color: "rgba(107, 91, 69, 0.62)",
+                    fontSize: 11.5,
+                    textDecoration: "underline",
+                    textUnderlineOffset: 2,
+                    fontFamily: "inherit",
+                  }}
+                >
+                  Sign in to restore purchases
+                </a>
+              )}
             </div>
             {restoreMessage ? (
               <p style={{ fontSize: 11.5, color: "rgba(107, 91, 69, 0.68)", margin: "7px 0 0", textAlign: "center", lineHeight: 1.4 }}>
