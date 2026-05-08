@@ -37,7 +37,11 @@ type BridgeResponse<T> = {
 
 const BRIDGE_MESSAGE_TYPE = "goshed-revenuecat";
 const BRIDGE_RESPONSE_EVENT = "goshed-revenuecat-response";
-const BRIDGE_TIMEOUT_MS = 20_000;
+const BRIDGE_TIMEOUT_MS_BY_ACTION: Record<BridgeAction, number> = {
+  getOfferings: 30_000,
+  purchase: 180_000,
+  restore: 120_000,
+};
 
 let activeNativeUserId: string | null = null;
 
@@ -93,8 +97,8 @@ function sendBridgeRequest<T>(action: BridgeAction, payload: BridgeRequestPayloa
   return new Promise<T>((resolve, reject) => {
     const timeoutId = window.setTimeout(() => {
       window.removeEventListener(BRIDGE_RESPONSE_EVENT, onResponse as EventListener);
-      reject(new Error("Native billing took too long. Check your connection and try again."));
-    }, BRIDGE_TIMEOUT_MS);
+      reject(new Error("Native billing is still processing. If Apple confirmed your purchase, tap Restore purchases."));
+    }, BRIDGE_TIMEOUT_MS_BY_ACTION[action]);
 
     const onResponse = (event: Event) => {
       const detail = (event as CustomEvent<BridgeResponse<T>>).detail;

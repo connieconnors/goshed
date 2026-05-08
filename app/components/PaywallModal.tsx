@@ -434,10 +434,23 @@ export function PaywallModal({
           const purchases = Purchases.getSharedInstance();
           await purchases.purchase({ rcPackage: pkg.webPackage });
         }
+        setPurchaseError(null);
+        setRestoreMessage(null);
         onClose();
         onPurchaseSuccess?.();
       } catch (err: unknown) {
-        setPurchaseError(revenueCatErrorMessage(err, "Purchase failed. Try again."));
+        const message = revenueCatErrorMessage(err, "Purchase failed. Try again.");
+        if (message.toLowerCase().includes("still processing")) {
+          const snap = await refresh();
+          if (snap.isPro) {
+            setPurchaseError(null);
+            setRestoreMessage("GoShed Pro is active on this account.");
+            onPurchaseSuccess?.();
+            window.setTimeout(() => onClose(), 900);
+            return;
+          }
+        }
+        setPurchaseError(message);
       } finally {
         resetHorizontalViewport();
         setPurchasing(false);
