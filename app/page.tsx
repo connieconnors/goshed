@@ -1835,6 +1835,7 @@ function HomeContent() {
             if (e.target === e.currentTarget) {
               freePlanNudgeDismissedThisSessionRef.current = true;
               setShowFreePlanNudge(false);
+              handleAddAnotherItem();
             }
           }}
         >
@@ -1889,6 +1890,7 @@ function HomeContent() {
                 onClick={() => {
                   freePlanNudgeDismissedThisSessionRef.current = true;
                   setShowFreePlanNudge(false);
+                  handleAddAnotherItem();
                 }}
                 style={{
                   width: "100%",
