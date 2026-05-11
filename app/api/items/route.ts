@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { FREE_LOGGED_IN_ITEM_LIMIT } from "@/lib/freeTier";
 import { parseValueRange } from "@/lib/parseValueRange";
+import { hasProEntitlement } from "@/lib/revenuecat";
 
 export async function GET() {
   const supabase = await createSupabaseServerClient();
@@ -57,6 +59,22 @@ export async function POST(request: NextRequest) {
 
   const { value_low, value_high } = parseValueRange(value_range_raw);
 
+  const { count, error: countError } = await supabase
+    .from("items")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .eq("hidden", false);
+
+  if (!countError && count !== null && count >= FREE_LOGGED_IN_ITEM_LIMIT) {
+    const isPro = await hasProEntitlement(user.id);
+    if (!isPro) {
+      return NextResponse.json(
+        { error: "paywall", itemCount: count },
+        { status: 402 }
+      );
+    }
+  }
+
   const { data, error } = await supabase
     .from("items")
     .insert({
@@ -81,6 +99,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     id: data.id,
     recommendation: data.recommendation,
+    itemCount: typeof count === "number" ? count + 1 : undefined,
     bucket_change_count:
       typeof data.bucket_change_count === "number" ? data.bucket_change_count : 0,
   });

@@ -139,7 +139,7 @@ function PileItemLink({ item }: { item: ShedItem }) {
 
 export default function ShedPage() {
   const router = useRouter();
-  const { user: sessionUser, loading: sessionLoading, itemCount, isPro, code, refresh: refreshAuthSession } = useAuthSession();
+  const { user: sessionUser, loading: sessionLoading, itemCount, isPro, refresh: refreshAuthSession } = useAuthSession();
   const [items, setItems] = useState<ShedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [clearedExpanded, setClearedExpanded] = useState(true);
@@ -221,7 +221,13 @@ export default function ShedPage() {
 
   const savedItemTotal =
     typeof itemCount === "number" && Number.isFinite(itemCount) ? itemCount : items.length;
-  const hasPremiumAccess = isPro || Boolean(code);
+  const hasPremiumAccess = isPro;
+  const hardPaywallRequired =
+    !sessionLoading &&
+    !!sessionUser &&
+    !loading &&
+    !hasPremiumAccess &&
+    savedItemTotal >= FREE_LOGGED_IN_ITEM_LIMIT;
 
   const closePaywallModal = useCallback(() => {
     setShowPaywallModal(false);
@@ -366,9 +372,9 @@ export default function ShedPage() {
 
         {!hasPremiumAccess ? (
           <PaywallModal
-            open={showPaywallModal}
+            open={showPaywallModal || hardPaywallRequired}
             onClose={closePaywallModal}
-            voluntary
+            voluntary={!hardPaywallRequired}
             itemCount={FREE_LOGGED_IN_ITEM_LIMIT}
             onPurchaseSuccess={() => {
               void refreshAuthSession();

@@ -258,6 +258,8 @@ function HomeContent() {
     refresh: refreshAuthSession,
     loading: sessionLoading,
     user: authUser,
+    itemCount: authItemCount,
+    isPro,
     welcomeSent,
   } = useAuthSession();
   const isLoggedIn = sessionLoading ? null : !!authUser;
@@ -293,6 +295,12 @@ function HomeContent() {
   /** Force guest-mode limit from URL (e.g. ?guest=1). Set in useEffect to avoid hydration mismatch. */
   const [forceGuestMode, setForceGuestMode] = useState(false);
   const effectiveGuest = (isLoggedIn !== true) || forceGuestMode;
+  const hardPaywallRequired =
+    !sessionLoading &&
+    !!authUser &&
+    !isPro &&
+    typeof authItemCount === "number" &&
+    authItemCount >= FREE_LOGGED_IN_ITEM_LIMIT;
 
   useEffect(() => {
     if (chosenDecision == null || chosenDecision !== 'sell') {
@@ -311,7 +319,7 @@ function HomeContent() {
 
     const dismissedUntil = guestGateDismissedUntilCountRef.current;
     const milestone =
-      previous < FREE_LOGGED_IN_ITEM_LIMIT && next >= FREE_LOGGED_IN_ITEM_LIMIT && FREE_LOGGED_IN_ITEM_LIMIT > dismissedUntil
+      previous < FREE_LOGGED_IN_ITEM_LIMIT && next >= FREE_LOGGED_IN_ITEM_LIMIT
         ? FREE_LOGGED_IN_ITEM_LIMIT
         : previous < GUEST_GATE_REMINDER_COUNT && next >= GUEST_GATE_REMINDER_COUNT && GUEST_GATE_REMINDER_COUNT > dismissedUntil
           ? GUEST_GATE_REMINDER_COUNT
@@ -372,6 +380,15 @@ function HomeContent() {
     window.addEventListener("goshed-open-voluntary-paywall", onVoluntary);
     return () => window.removeEventListener("goshed-open-voluntary-paywall", onVoluntary);
   }, []);
+
+  useEffect(() => {
+    if (sessionLoading || !authUser || isPro) return;
+    if (typeof authItemCount !== "number" || authItemCount < FREE_LOGGED_IN_ITEM_LIMIT) return;
+    setShowFreePlanNudge(false);
+    setPaywallVoluntary(false);
+    setPaywallItemCount(authItemCount);
+    setShowPaywallModal(true);
+  }, [sessionLoading, authUser, authItemCount, isPro]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -684,8 +701,7 @@ function HomeContent() {
     if (!file) return;
     if (
       effectiveGuest &&
-      guestAnalysisCountRef.current >= FREE_LOGGED_IN_ITEM_LIMIT &&
-      guestAnalysisCountRef.current > guestGateDismissedUntilCountRef.current
+      guestAnalysisCountRef.current >= FREE_LOGGED_IN_ITEM_LIMIT
     ) {
       e.target.value = '';
       setGuestGateCount(guestAnalysisCountRef.current);
@@ -776,13 +792,13 @@ function HomeContent() {
 
   const handlePaywallSuccess = useCallback(() => {
     closePaywallModal();
-    if (paywallVoluntary) {
+    if (paywallVoluntary || hardPaywallRequired) {
       void refreshAuthSession();
       return;
     }
     const dataUrl = analysisImageDataUrlRef.current;
     if (dataUrl) runAnalyzeWithDataUrl(dataUrl);
-  }, [closePaywallModal, paywallVoluntary, refreshAuthSession, runAnalyzeWithDataUrl]);
+  }, [closePaywallModal, paywallVoluntary, hardPaywallRequired, refreshAuthSession, runAnalyzeWithDataUrl]);
 
   // Save to Supabase when we have analysis + recommendation and user is logged in (once per item).
   // Key is by item_label only so changing recommendation (Other options) updates via PATCH, doesn't create a second item.
@@ -805,8 +821,26 @@ function HomeContent() {
         notes: refinementNote.trim() || undefined,
       }),
     })
-      .then((res) => res.json())
-      .then((data: { id?: string; bucket_change_count?: number }) => {
+      .then(async (res) => {
+        const data = (await res.json().catch(() => ({}))) as {
+          id?: string;
+          bucket_change_count?: number;
+          itemCount?: number;
+        };
+        if (res.status === 402) {
+          setShowFreePlanNudge(false);
+          setPaywallVoluntary(false);
+          setPaywallItemCount(typeof data.itemCount === "number" ? data.itemCount : FREE_LOGGED_IN_ITEM_LIMIT);
+          setShowPaywallModal(true);
+          return null;
+        }
+        if (!res.ok) {
+          throw new Error(typeof (data as { error?: unknown }).error === "string" ? (data as { error: string }).error : "Save failed");
+        }
+        return data;
+      })
+      .then((data) => {
+        if (!data) return;
         if (data?.id) savedItemIdRef.current = data.id;
         if (typeof data?.bucket_change_count === 'number' && Number.isFinite(data.bucket_change_count)) {
           savedItemBucketChangeCountRef.current = data.bucket_change_count;
@@ -816,10 +850,17 @@ function HomeContent() {
         refreshAuthSession()
           .then((snap) => {
             const savedCount = typeof snap.itemCount === "number" ? snap.itemCount : null;
+            if (savedCount !== null && savedCount >= FREE_LOGGED_IN_ITEM_LIMIT && snap.isPro !== true) {
+              setShowFreePlanNudge(false);
+              setPaywallVoluntary(false);
+              setPaywallItemCount(savedCount);
+              setShowPaywallModal(true);
+              return;
+            }
             if (
               savedCount !== null &&
               savedCount >= FREE_LOGGED_IN_ITEM_LIMIT - 1 &&
-              savedCount <= FREE_LOGGED_IN_ITEM_LIMIT &&
+              savedCount < FREE_LOGGED_IN_ITEM_LIMIT &&
               snap.isPro !== true &&
               !freePlanNudgeDismissedThisSessionRef.current
             ) {
@@ -1768,14 +1809,14 @@ function HomeContent() {
       />
 
       <PaywallModal
-        open={showPaywallModal}
+        open={showPaywallModal || hardPaywallRequired}
         onClose={closePaywallModal}
         onPurchaseSuccess={handlePaywallSuccess}
-        itemCount={paywallItemCount}
-        voluntary={paywallVoluntary}
+        itemCount={hardPaywallRequired && typeof authItemCount === "number" ? authItemCount : paywallItemCount}
+        voluntary={paywallVoluntary && !hardPaywallRequired}
         beforeGuestPurchase={prepareGuestPurchase}
       />
-      {showFreePlanNudge && (
+      {showFreePlanNudge && !hardPaywallRequired && (
         <div
           role="dialog"
           aria-modal="true"

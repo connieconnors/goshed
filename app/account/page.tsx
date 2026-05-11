@@ -18,7 +18,7 @@ const WEB_REVENUECAT_API_KEY =
 
 export default function AccountPage() {
   const router = useRouter();
-  const { user: sessionUser, loading: sessionLoading, isPro, code, refresh: refreshAuthSession } = useAuthSession();
+  const { user: sessionUser, loading: sessionLoading, isPro, refresh: refreshAuthSession } = useAuthSession();
   const [user, setUser] = useState<{ id?: string; email?: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -198,7 +198,7 @@ export default function AccountPage() {
     return null;
   }
 
-  const hasPremiumAccess = isPro || Boolean(code);
+  const hasPremiumAccess = isPro;
 
   return (
     <main style={{ minHeight: "100vh", background: "var(--bg)", padding: "24px 24px 48px" }}>
