@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
+import { syncGuestProPurchaseToAccount } from "@/lib/guestProStorage";
 
 /** Shape returned by GET /api/auth/session (subset used in the client). */
 export type AuthSessionUser = {
@@ -117,7 +118,10 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
     try {
       const supabase = createSupabaseBrowserClient();
       const { data } = supabase.auth.onAuthStateChange(() => {
-        void refresh();
+        void (async () => {
+          await syncGuestProPurchaseToAccount();
+          await refresh();
+        })();
       });
       subscription = data.subscription;
     } catch (e) {

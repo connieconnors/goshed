@@ -85,3 +85,32 @@ export async function grantProEntitlement(
     return false;
   }
 }
+
+/** Alias a guest RevenueCat subscriber to a signed-in account user id. */
+export async function aliasRevenueCatSubscriber(
+  fromAppUserId: string,
+  toAppUserId: string
+): Promise<boolean> {
+  const secretKey = process.env.REVENUECAT_SECRET_API_KEY?.trim();
+  if (!secretKey) return false;
+
+  const encodedFrom = encodeURIComponent(fromAppUserId);
+  try {
+    const res = await fetch(`${REVENUECAT_API_BASE}/subscribers/${encodedFrom}/aliases`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${secretKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ new_app_user_id: toAppUserId }),
+    });
+    if (!res.ok) {
+      console.error("[revenuecat] alias subscriber failed:", res.status, await res.text());
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("[revenuecat] alias subscriber error:", err);
+    return false;
+  }
+}

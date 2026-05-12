@@ -6,6 +6,7 @@ import Link from "next/link";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
 import { useAuthSession } from "@/lib/auth-session-context";
 import { migrateGuestShedItemsToAccount } from "@/lib/guestShedStorage";
+import { syncGuestProPurchaseToAccount } from "@/lib/guestProStorage";
 
 const LAST_LOGIN_EMAIL_KEY = "goshed_last_login_email";
 
@@ -86,10 +87,15 @@ function LoginForm() {
         /* non-blocking: login still succeeds even if profile sync fails */
       }
       localStorage.setItem(LAST_LOGIN_EMAIL_KEY, emailNorm);
+      const proSynced = await syncGuestProPurchaseToAccount();
       const migration = await migrateGuestShedItemsToAccount();
       if (migration.failed > 0) {
         setSignInError("Signed in, but we couldn't save your guest Shed yet. Try again before leaving this device.");
         return;
+      }
+      if (proSynced) {
+        // Ensure hard gates see the transferred entitlement before redirecting.
+        await fetch("/api/auth/session", { credentials: "include", cache: "no-store" }).catch(() => null);
       }
       redirectAfterLogin();
     } finally {

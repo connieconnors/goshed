@@ -23,6 +23,11 @@ export function getOrCreateGuestRevenueCatAppUserId(): string {
   return next;
 }
 
+export function getGuestRevenueCatAppUserId(): string | null {
+  if (!storageAvailable()) return null;
+  return localStorage.getItem(GUEST_REVENUECAT_APP_USER_ID_KEY)?.trim() || null;
+}
+
 export function hasGuestProAccess(): boolean {
   if (!storageAvailable()) return false;
   return localStorage.getItem(GUEST_PRO_ACTIVE_KEY) === "true";
@@ -32,4 +37,21 @@ export function markGuestProAccessActive() {
   if (!storageAvailable()) return;
   localStorage.setItem(GUEST_PRO_ACTIVE_KEY, "true");
   window.dispatchEvent(new Event("goshed-guest-pro-updated"));
+}
+
+export async function syncGuestProPurchaseToAccount(): Promise<boolean> {
+  const guestAppUserId = getGuestRevenueCatAppUserId();
+  if (!guestAppUserId || !hasGuestProAccess()) return false;
+
+  try {
+    const res = await fetch("/api/revenuecat/sync-guest", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ guestAppUserId }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }

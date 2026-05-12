@@ -7,6 +7,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase";
 import { useAuthSession } from "@/lib/auth-session-context";
 import { addEmailWithPassword } from "@/lib/authPasswordHint";
 import { migrateGuestShedItemsToAccount } from "@/lib/guestShedStorage";
+import { syncGuestProPurchaseToAccount } from "@/lib/guestProStorage";
 
 const LAST_LOGIN_EMAIL_KEY = "goshed_last_login_email";
 
@@ -115,12 +116,13 @@ function SetPasswordForm() {
       }
       addEmailWithPassword(emailNorm);
       await refreshAuthSession();
+      const proSynced = await syncGuestProPurchaseToAccount();
       const migration = await migrateGuestShedItemsToAccount();
       if (migration.failed > 0) {
         setError("Account created, but we couldn't save your guest Shed yet. Try again before leaving this device.");
         return;
       }
-      if (migration.migrated > 0) await refreshAuthSession();
+      if (migration.migrated > 0 || proSynced) await refreshAuthSession();
       redirectHome();
     } catch {
       setError("Something went wrong. Try again.");
