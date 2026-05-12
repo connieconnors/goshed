@@ -3,7 +3,10 @@
 import { useState, useEffect, useCallback, useRef, type CSSProperties } from "react";
 import { MOMENT_COPY } from "@/lib/momentCopy";
 import { useAuthSession } from "@/lib/auth-session-context";
-import { createSupabaseBrowserClient } from "@/lib/supabase";
+import {
+  getOrCreateGuestRevenueCatAppUserId,
+  markGuestProAccessActive,
+} from "@/lib/guestProStorage";
 import {
   ensureNativeIosPurchasesConfigured,
   getNativeIosOfferings,
@@ -28,8 +31,6 @@ type PaywallModalProps = {
   itemCount?: number;
   /** When true, title uses voluntary upgrade copy (footer Upgrade); limit-driven paywalls omit this. */
   voluntary?: boolean;
-  /** After inline guest signup + sign-in, await before RevenueCat purchase (e.g. AI consent on home). */
-  beforeGuestPurchase?: () => Promise<void>;
 };
 
 const WEB_API_KEY =
@@ -115,7 +116,6 @@ export function PaywallModal({
   onClose,
   onPurchaseSuccess,
   voluntary = false,
-  beforeGuestPurchase,
 }: PaywallModalProps) {
   const [userId, setUserId] = useState<string | null>(null);
   const [monthlyPackage, setMonthlyPackage] = useState<CheckoutPackage | null>(null);
@@ -131,21 +131,8 @@ export function PaywallModal({
   const [promoLoading, setPromoLoading] = useState(false);
   const [promoError, setPromoError] = useState<string | null>(null);
   const [promoSuccess, setPromoSuccess] = useState<string | null>(null);
-  /** Guest tapped a price — collect email/password then purchase this plan. */
-  const [guestSignupOpen, setGuestSignupOpen] = useState(false);
-  const [guestPendingPlan, setGuestPendingPlan] = useState<"annual" | "monthly" | null>(null);
-  const [guestEmail, setGuestEmail] = useState("");
-  const [guestPassword, setGuestPassword] = useState("");
-  const [guestConfirmPassword, setGuestConfirmPassword] = useState("");
-  const [guestSignupSubmitting, setGuestSignupSubmitting] = useState(false);
-  const [guestSignupError, setGuestSignupError] = useState<string | null>(null);
-  /** After Upgrade inline signup: nudge consent, then purchase (password gate is skipped). */
-  const [upgradeNudgeModalOpen, setUpgradeNudgeModalOpen] = useState(false);
-  const [upgradeNudgeConsentChecked, setUpgradeNudgeConsentChecked] = useState(false);
-  const [upgradeNudgeSubmitting, setUpgradeNudgeSubmitting] = useState(false);
-  const [upgradeNudgeError, setUpgradeNudgeError] = useState<string | null>(null);
-  const pendingUpgradePlanRef = useRef<"annual" | "monthly" | null>(null);
-  const pendingUpgradeUserIdRef = useRef<string | null>(null);
+  const [billingUserIsGuest, setBillingUserIsGuest] = useState(false);
+  const [postPurchaseAccountPromptOpen, setPostPurchaseAccountPromptOpen] = useState(false);
   /** Bumps to re-run RevenueCat offerings fetch (Try again). */
   const [offeringsRetryNonce, setOfferingsRetryNonce] = useState(0);
   /** User-visible reason when signed-in plans are missing or failed to load. */
@@ -184,39 +171,6 @@ export function PaywallModal({
     }
   }, []);
 
-  const loadPackageForPlan = useCallback(
-    async (uid: string, plan: "monthly" | "annual") => {
-      if (await isNativeIosPurchasesAvailable()) {
-        if (!hasNativeIosRevenueCatKey()) return null;
-        const configured = await ensureNativeIosPurchasesConfigured(uid);
-        if (!configured) return null;
-        const offerings = await getNativeIosOfferings();
-        const monthly = resolveNativeSubscriptionPackage(offerings, "monthly");
-        const yearly = resolveNativeSubscriptionPackage(offerings, "annual");
-        setBillingRuntime("native-ios");
-        setMonthlyPackage(monthly ? { source: "native-ios", plan: "monthly", nativePackage: monthly } : null);
-        setYearlyPackage(yearly ? { source: "native-ios", plan: "annual", nativePackage: yearly } : null);
-        const selected = plan === "annual" ? yearly : monthly;
-        return selected ? { source: "native-ios" as const, plan, nativePackage: selected } : null;
-      }
-
-      if (!WEB_API_KEY.trim()) return null;
-      const configured = await ensureWebConfigured(uid);
-      if (!configured) return null;
-      const purchases = Purchases.getSharedInstance();
-      const offerings: Offerings = await purchases.getOfferings();
-      const curOffering = offerings.current;
-      const monthly = resolveSubscriptionPackage(curOffering, "monthly");
-      const yearly = resolveSubscriptionPackage(curOffering, "annual");
-      setBillingRuntime("web");
-      setMonthlyPackage(monthly ? { source: "web", plan: "monthly", webPackage: monthly } : null);
-      setYearlyPackage(yearly ? { source: "web", plan: "annual", webPackage: yearly } : null);
-      const selected = plan === "annual" ? yearly : monthly;
-      return selected ? { source: "web" as const, plan, webPackage: selected } : null;
-    },
-    [ensureWebConfigured]
-  );
-
   useEffect(() => {
     if (!open) {
       setUserId(null);
@@ -231,19 +185,8 @@ export function PaywallModal({
       setPromoCode("");
       setPromoError(null);
       setPromoSuccess(null);
-      setGuestSignupOpen(false);
-      setGuestPendingPlan(null);
-      setGuestEmail("");
-      setGuestPassword("");
-      setGuestConfirmPassword("");
-      setGuestSignupSubmitting(false);
-      setGuestSignupError(null);
-      setUpgradeNudgeModalOpen(false);
-      setUpgradeNudgeConsentChecked(false);
-      setUpgradeNudgeSubmitting(false);
-      setUpgradeNudgeError(null);
-      pendingUpgradePlanRef.current = null;
-      pendingUpgradeUserIdRef.current = null;
+      setBillingUserIsGuest(false);
+      setPostPurchaseAccountPromptOpen(false);
       setOfferingsRetryNonce(0);
       setPlansIssueMessage(null);
       setRestoreLoading(false);
@@ -272,15 +215,10 @@ export function PaywallModal({
       setPlansIssueMessage(null);
 
       const snap = await refresh();
-      const uid = snap.user?.id ?? null;
+      const uid = snap.user?.id ?? getOrCreateGuestRevenueCatAppUserId();
       if (cancelled) return;
       setUserId(uid);
-
-      if (!uid) {
-        lastOfferingsSnapshotRef.current = { reason: "not_signed_in" };
-        finish();
-        return;
-      }
+      setBillingUserIsGuest(!snap.user);
 
       if (snap.isPro) {
         setRestoreMessage("GoShed Pro is active on this account.");
@@ -422,7 +360,7 @@ export function PaywallModal({
       setPurchasingPlan(pkg.plan);
       try {
         const snap = await refresh();
-        if (snap.isPro) {
+        if (!billingUserIsGuest && snap.isPro) {
           setRestoreMessage("GoShed Pro is active on this account.");
           onPurchaseSuccess?.();
           window.setTimeout(() => onClose(), 900);
@@ -436,7 +374,12 @@ export function PaywallModal({
         }
         setPurchaseError(null);
         setRestoreMessage(null);
-        onClose();
+        if (billingUserIsGuest) {
+          markGuestProAccessActive();
+          setPostPurchaseAccountPromptOpen(true);
+        } else {
+          onClose();
+        }
         onPurchaseSuccess?.();
       } catch (err: unknown) {
         const message = revenueCatErrorMessage(err, "Purchase failed. Try again.");
@@ -457,174 +400,17 @@ export function PaywallModal({
         setPurchasingPlan(null);
       }
     },
-    [purchasing, refresh, onClose, onPurchaseSuccess]
+    [purchasing, refresh, billingUserIsGuest, onClose, onPurchaseSuccess]
   );
-
-  const completeGuestSignupAndPurchase = useCallback(async () => {
-    const email = guestEmail.trim().toLowerCase();
-    const password = guestPassword;
-    const plan = guestPendingPlan;
-    if (!email.includes("@")) {
-      setGuestSignupError("Enter a valid email.");
-      return;
-    }
-    if (password.trim().length < 6) {
-      setGuestSignupError("Use at least 6 characters for your password.");
-      return;
-    }
-    if (password.trim() !== guestConfirmPassword.trim()) {
-      setGuestSignupError("Passwords don’t match.");
-      return;
-    }
-    if (!plan) return;
-
-    setGuestSignupError(null);
-    setGuestSignupSubmitting(true);
-    try {
-      const supabase = createSupabaseBrowserClient();
-      const res = await fetch("/api/auth/upgrade-signup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password: password.trim() }),
-      });
-      const signupBody = (await res.json().catch(() => ({}))) as {
-        error?: unknown;
-        code?: unknown;
-      };
-
-      const created = res.ok;
-      const already =
-        res.status === 409 && signupBody.code === "already_registered";
-      if (!created && !already) {
-        setGuestSignupError(
-          typeof signupBody.error === "string" ? signupBody.error : "Could not create account."
-        );
-        return;
-      }
-
-      const { error: inErr } = await supabase.auth.signInWithPassword({
-        email,
-        password: password.trim(),
-      });
-      if (inErr) {
-        setGuestSignupError(inErr.message || "Could not sign in. Check your password.");
-        return;
-      }
-
-      if (created) {
-        try {
-          localStorage.setItem("goshed_ai_consent", "1");
-        } catch {
-          /* ignore */
-        }
-      }
-
-      const snap = await refresh();
-      const uid = snap.user?.id ?? null;
-      if (!uid) {
-        setGuestSignupError("Could not start your session. Try again or use the login page.");
-        return;
-      }
-
-      setUserId(uid);
-      pendingUpgradeUserIdRef.current = uid;
-      pendingUpgradePlanRef.current = plan;
-      setGuestSignupOpen(false);
-      setGuestEmail("");
-      setGuestPassword("");
-      setGuestConfirmPassword("");
-      setGuestPendingPlan(null);
-
-      setUpgradeNudgeError(null);
-      setUpgradeNudgeModalOpen(true);
-    } finally {
-      setGuestSignupSubmitting(false);
-    }
-  }, [
-    guestEmail,
-    guestPassword,
-    guestConfirmPassword,
-    guestPendingPlan,
-    refresh,
-  ]);
-
-  const finishUpgradeNudgeAndPurchase = useCallback(async () => {
-    const plan = pendingUpgradePlanRef.current;
-    const uid = pendingUpgradeUserIdRef.current;
-    if (!plan || !uid) {
-      setUpgradeNudgeModalOpen(false);
-      pendingUpgradePlanRef.current = null;
-      pendingUpgradeUserIdRef.current = null;
-      return;
-    }
-    setUpgradeNudgeSubmitting(true);
-    setUpgradeNudgeError(null);
-    try {
-      const pr = await fetch("/api/auth/password-set", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notificationConsent: upgradeNudgeConsentChecked }),
-      });
-      const pb = await pr.json().catch(() => ({}));
-      if (!pr.ok) {
-        setUpgradeNudgeError(
-          typeof pb?.error === "string" ? pb.error : "Couldn’t save your preference. Try again."
-        );
-        return;
-      }
-
-      try {
-        await beforeGuestPurchase?.();
-      } catch (err: unknown) {
-        setUpgradeNudgeError(
-          err instanceof Error
-            ? err.message
-            : "Create or sign in to your account so we can save your Shed before checkout."
-        );
-        return;
-      }
-
-      if (billingRuntime === "native-ios" && !hasNativeIosRevenueCatKey()) {
-        setUpgradeNudgeError("Subscription checkout isn’t available in this version. Try again later.");
-        return;
-      }
-
-      if (billingRuntime === "web" && !WEB_API_KEY.trim()) {
-        setUpgradeNudgeError("Subscription checkout isn’t available in this version. Try again later.");
-        return;
-      }
-
-      let pkg: CheckoutPackage | null;
-      try {
-        pkg = await loadPackageForPlan(uid, plan);
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        setUpgradeNudgeError(
-          process.env.NODE_ENV === "development" ? `Could not load plans: ${message}` : "Could not load plans. Try again."
-        );
-        return;
-      }
-      if (!pkg) {
-        setUpgradeNudgeError(
-          "That plan couldn’t be loaded. Close this window and tap Try again on the subscription screen."
-        );
-        return;
-      }
-
-      pendingUpgradePlanRef.current = null;
-      pendingUpgradeUserIdRef.current = null;
-      setUpgradeNudgeModalOpen(false);
-      await handlePurchase(pkg);
-    } finally {
-      setUpgradeNudgeSubmitting(false);
-    }
-  }, [upgradeNudgeConsentChecked, beforeGuestPurchase, billingRuntime, loadPackageForPlan, handlePurchase]);
 
   const handleApplyPromo = useCallback(async () => {
     const code = promoCode.trim();
     if (!code || promoLoading) return;
     setPromoError(null);
+    if (billingUserIsGuest) {
+      setPromoError("Invite codes are tied to accounts. You can subscribe now without an account, or create a free account to use a code.");
+      return;
+    }
     setPromoLoading(true);
     try {
       const res = await fetch("/api/promo-redeem", {
@@ -649,7 +435,7 @@ export function PaywallModal({
     } finally {
       setPromoLoading(false);
     }
-  }, [promoCode, promoLoading, onClose, onPurchaseSuccess]);
+  }, [promoCode, promoLoading, billingUserIsGuest, onClose, onPurchaseSuccess]);
 
   /** When signed-in paywall buttons render disabled, log RevenueCat snapshot + flags (see red disabled state in devtools). */
   useEffect(() => {
@@ -676,22 +462,7 @@ export function PaywallModal({
     if (!open) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      if (purchasing || guestSignupSubmitting || upgradeNudgeSubmitting) return;
-      if (guestSignupOpen) {
-        setGuestSignupOpen(false);
-        setGuestPendingPlan(null);
-        setGuestSignupError(null);
-        setGuestPassword("");
-        setGuestConfirmPassword("");
-        return;
-      }
-      if (upgradeNudgeModalOpen) {
-        pendingUpgradePlanRef.current = null;
-        pendingUpgradeUserIdRef.current = null;
-        setUpgradeNudgeModalOpen(false);
-        setUpgradeNudgeError(null);
-        return;
-      }
+      if (purchasing) return;
       if (voluntary) onClose();
     };
     window.addEventListener("keydown", onKeyDown);
@@ -699,10 +470,6 @@ export function PaywallModal({
   }, [
     open,
     purchasing,
-    guestSignupSubmitting,
-    upgradeNudgeSubmitting,
-    guestSignupOpen,
-    upgradeNudgeModalOpen,
     voluntary,
     onClose,
   ]);
@@ -713,14 +480,29 @@ export function PaywallModal({
     setRestoreMessage(null);
     try {
       if (billingRuntime === "native-ios") {
-        await restoreNativeIosPurchases(userId);
+        const restored = await restoreNativeIosPurchases(userId);
+        if (billingUserIsGuest && (restored.activeEntitlements?.length ?? 0) > 0) {
+          markGuestProAccessActive();
+          setRestoreMessage("GoShed Pro is active on this device.");
+          onPurchaseSuccess?.();
+          window.setTimeout(() => onClose(), 900);
+          return;
+        }
       } else {
         if (!WEB_API_KEY.trim() || !Purchases.isConfigured()) {
           setRestoreMessage("Billing isn’t available right now. Try again later.");
           return;
         }
         const purchases = Purchases.getSharedInstance();
-        await purchases.getCustomerInfo();
+        const customerInfo = await purchases.getCustomerInfo();
+        const activeEntitlements = (customerInfo as { entitlements?: { active?: Record<string, unknown> } }).entitlements?.active;
+        if (billingUserIsGuest && activeEntitlements && Object.keys(activeEntitlements).length > 0) {
+          markGuestProAccessActive();
+          setRestoreMessage("GoShed Pro is active on this device.");
+          onPurchaseSuccess?.();
+          window.setTimeout(() => onClose(), 900);
+          return;
+        }
       }
       const snap = await refresh();
       if (snap.isPro) {
@@ -735,7 +517,7 @@ export function PaywallModal({
     } finally {
       setRestoreLoading(false);
     }
-  }, [userId, restoreLoading, billingRuntime, refresh, onPurchaseSuccess, onClose]);
+  }, [userId, restoreLoading, billingRuntime, billingUserIsGuest, refresh, onPurchaseSuccess, onClose]);
 
   if (!open) return null;
 
@@ -745,26 +527,10 @@ export function PaywallModal({
   const showPurchaseRow = plansSettled && !showPlansSpinner;
 
   const onYearClick = () => {
-    if (!signedIn) {
-      setGuestPendingPlan("annual");
-      setGuestSignupOpen(true);
-      setGuestSignupError(null);
-      setUpgradeNudgeConsentChecked(false);
-      setGuestConfirmPassword("");
-      return;
-    }
     void handlePurchase(yearlyPackage);
   };
 
   const onMonthClick = () => {
-    if (!signedIn) {
-      setGuestPendingPlan("monthly");
-      setGuestSignupOpen(true);
-      setGuestSignupError(null);
-      setUpgradeNudgeConsentChecked(false);
-      setGuestConfirmPassword("");
-      return;
-    }
     void handlePurchase(monthlyPackage);
   };
 
@@ -777,8 +543,8 @@ export function PaywallModal({
   const yearlyCtaPrice = yearlyPriceLabel ? `${yearlyPriceLabel}/year` : "$24.99/year";
   const monthlyCtaPrice = monthlyPriceLabel ? `${monthlyPriceLabel}/month` : "$2.99/month";
   const planSummary =
-    !signedIn
-      ? "Create or sign in to your account first so your Shed is saved before checkout."
+    billingUserIsGuest
+      ? "Subscribe now. Creating an account is optional and helps save your Shed, sync across devices, restore purchases, and back up access."
       : yearlyPriceLabel && monthlyPriceLabel
       ? `Keep going for ${monthlyPriceLabel} a month — or ${yearlyPriceLabel} for the year.`
       : "Choose a plan to keep going with unlimited items.";
@@ -942,7 +708,7 @@ export function PaywallModal({
                     cursor: signedIn && yearDisabled ? "not-allowed" : "pointer",
                   }}
                 >
-                  {purchasingPlan === "annual" ? "Processing…" : `GoShed Pro Annual — ${yearlyCtaPrice}`}
+                  {purchasingPlan === "annual" ? "Processing…" : `Continue to GoShed Pro Annual — ${yearlyCtaPrice}`}
                 </button>
                 <button
                   type="button"
@@ -961,7 +727,7 @@ export function PaywallModal({
                     fontFamily: "inherit",
                   }}
                 >
-                  {purchasingPlan === "monthly" ? "Processing…" : `GoShed Pro Monthly — ${monthlyCtaPrice}`}
+                  {purchasingPlan === "monthly" ? "Processing…" : `Subscribe Monthly — ${monthlyCtaPrice}`}
                 </button>
                 {canDismiss ? (
                   <button
@@ -1048,7 +814,35 @@ export function PaywallModal({
                 >
                   {restoreLoading ? "Syncing purchases…" : "Already subscribed? Restore purchases"}
                 </button>
-              ) : (
+              ) : null}
+              {billingUserIsGuest ? (
+                <>
+                  <a
+                    href="/set-password?redirect=/shed"
+                    style={{
+                      color: "rgba(107, 91, 69, 0.62)",
+                      fontSize: 11.5,
+                      textDecoration: "underline",
+                      textUnderlineOffset: 2,
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    Create Free Account
+                  </a>
+                  <a
+                    href="/login?redirect=/account"
+                    style={{
+                      color: "rgba(107, 91, 69, 0.62)",
+                      fontSize: 11.5,
+                      textDecoration: "underline",
+                      textUnderlineOffset: 2,
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    Sign In
+                  </a>
+                </>
+              ) : !signedIn ? (
                 <a
                   href="/login?redirect=/account"
                   style={{
@@ -1061,7 +855,7 @@ export function PaywallModal({
                 >
                   Sign in to restore purchases
                 </a>
-              )}
+              ) : null}
             </div>
             {restoreMessage ? (
               <p style={{ fontSize: 11.5, color: "rgba(107, 91, 69, 0.68)", margin: "7px 0 0", textAlign: "center", lineHeight: 1.4 }}>
@@ -1118,237 +912,7 @@ export function PaywallModal({
         ) : null}
       </div>
 
-      {guestSignupOpen ? (
-        <div
-          role="presentation"
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 60,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            ...PAYWALL_OVERLAY_SAFE_PADDING,
-            background: "rgba(44,36,22,0.35)",
-          }}
-          onClick={() => {
-            if (!guestSignupSubmitting) {
-              setGuestSignupOpen(false);
-              setGuestPendingPlan(null);
-              setGuestSignupError(null);
-              setGuestPassword("");
-              setGuestConfirmPassword("");
-            }
-          }}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="guest-paywall-signup-title"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "100%",
-              maxWidth: 340,
-              maxHeight: "min(520px, calc(100dvh - 32px))",
-              overflowY: "auto",
-              WebkitOverflowScrolling: "touch",
-              background: "var(--white)",
-              borderRadius: 16,
-              padding: "22px 20px",
-              border: "1px solid var(--surface2)",
-              boxShadow: "0 12px 40px rgba(44,36,22,0.18)",
-            }}
-          >
-            <h3
-              id="guest-paywall-signup-title"
-              style={{
-                fontFamily: "var(--font-cormorant)",
-                fontSize: 20,
-                fontWeight: 600,
-                color: "var(--ink)",
-                margin: "0 0 6px",
-              }}
-            >
-              Create account to continue
-            </h3>
-            <p style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.45, margin: "0 0 14px" }}>
-              We’ll save your Shed to this account before checkout starts.
-            </p>
-            <input
-              type="email"
-              value={guestEmail}
-              onChange={(e) => {
-                setGuestEmail(e.target.value);
-                setGuestSignupError(null);
-              }}
-              placeholder="Email"
-              autoComplete="email"
-              disabled={guestSignupSubmitting}
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                fontSize: 15,
-                border: "1px solid var(--surface2)",
-                borderRadius: 10,
-                marginBottom: 8,
-                boxSizing: "border-box",
-              }}
-            />
-            <input
-              type="password"
-              value={guestPassword}
-              onChange={(e) => {
-                setGuestPassword(e.target.value);
-                setGuestSignupError(null);
-              }}
-              placeholder="Password (min 6 characters)"
-              autoComplete="new-password"
-              disabled={guestSignupSubmitting}
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                fontSize: 15,
-                border: "1px solid var(--surface2)",
-                borderRadius: 10,
-                marginBottom: 8,
-                boxSizing: "border-box",
-              }}
-            />
-            <input
-              type="password"
-              value={guestConfirmPassword}
-              onChange={(e) => {
-                setGuestConfirmPassword(e.target.value);
-                setGuestSignupError(null);
-              }}
-              placeholder="Confirm password"
-              autoComplete="new-password"
-              disabled={guestSignupSubmitting}
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                fontSize: 15,
-                border: "1px solid var(--surface2)",
-                borderRadius: 10,
-                marginBottom: 14,
-                boxSizing: "border-box",
-              }}
-            />
-            <label
-              htmlFor="guest-signup-nudge-consent"
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: 8,
-                marginBottom: 14,
-                cursor: guestSignupSubmitting ? "not-allowed" : "pointer",
-              }}
-            >
-              <input
-                id="guest-signup-nudge-consent"
-                type="checkbox"
-                checked={upgradeNudgeConsentChecked}
-                onChange={(e) => {
-                  setUpgradeNudgeConsentChecked(e.target.checked);
-                  setGuestSignupError(null);
-                }}
-                disabled={guestSignupSubmitting}
-                style={{
-                  marginTop: 2,
-                  width: 14,
-                  height: 14,
-                  accentColor: "var(--ink)",
-                  cursor: guestSignupSubmitting ? "not-allowed" : "pointer",
-                }}
-              />
-              <span style={{ fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.45 }}>
-                Check the box for an occasional nudge to keep clearing your shed.
-              </span>
-            </label>
-            {guestSignupError ? (
-              <div style={{ marginBottom: 14 }}>
-                <p style={{ color: "#c00", fontSize: 13, margin: "0 0 10px", lineHeight: 1.45 }}>
-                  {guestSignupError}
-                </p>
-                <div
-                  style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: 12,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <button
-                    type="button"
-                    disabled={guestSignupSubmitting}
-                    onClick={() => setGuestSignupError(null)}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      padding: 0,
-                      fontSize: 13,
-                      color: "var(--accent)",
-                      cursor: guestSignupSubmitting ? "not-allowed" : "pointer",
-                      textDecoration: "underline",
-                      fontFamily: "inherit",
-                    }}
-                  >
-                    Edit details
-                  </button>
-                  <button
-                    type="button"
-                    disabled={guestSignupSubmitting}
-                    onClick={() => {
-                      setGuestSignupOpen(false);
-                      setGuestPendingPlan(null);
-                      setGuestSignupError(null);
-                      setGuestPassword("");
-                      setGuestConfirmPassword("");
-                    }}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      padding: 0,
-                      fontSize: 13,
-                      color: "var(--ink-soft)",
-                      cursor: guestSignupSubmitting ? "not-allowed" : "pointer",
-                      textDecoration: "underline",
-                      fontFamily: "inherit",
-                    }}
-                  >
-                    Back
-                  </button>
-                </div>
-              </div>
-            ) : null}
-            <button
-              type="button"
-              disabled={
-                guestSignupSubmitting ||
-                !guestEmail.trim().includes("@") ||
-                guestPassword.trim().length < 6 ||
-                guestConfirmPassword.trim().length < 6 ||
-                guestPassword.trim() !== guestConfirmPassword.trim()
-              }
-              onClick={() => void completeGuestSignupAndPurchase()}
-              className="goshed-primary-btn"
-              style={{
-                width: "100%",
-                justifyContent: "center",
-                padding: "12px 16px",
-                fontSize: 15,
-                fontWeight: 600,
-                cursor: guestSignupSubmitting ? "wait" : "pointer",
-              }}
-            >
-              {guestSignupSubmitting ? "Working…" : "Create account & continue"}
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {upgradeNudgeModalOpen ? (
+      {postPurchaseAccountPromptOpen ? (
         <div
           role="presentation"
           style={{
@@ -1362,18 +926,14 @@ export function PaywallModal({
             background: "rgba(44,36,22,0.35)",
           }}
           onClick={() => {
-            if (!upgradeNudgeSubmitting) {
-              pendingUpgradePlanRef.current = null;
-              pendingUpgradeUserIdRef.current = null;
-              setUpgradeNudgeModalOpen(false);
-              setUpgradeNudgeError(null);
-            }
+            setPostPurchaseAccountPromptOpen(false);
+            onClose();
           }}
         >
           <div
             role="dialog"
             aria-modal="true"
-            aria-label="Occasional nudge preference"
+            aria-labelledby="subscription-active-title"
             onClick={(e) => e.stopPropagation()}
             style={{
               width: "100%",
@@ -1383,50 +943,26 @@ export function PaywallModal({
               padding: "22px 20px",
               border: "1px solid var(--surface2)",
               boxShadow: "0 12px 40px rgba(44,36,22,0.18)",
+              fontFamily: "inherit",
             }}
           >
-            <label
-              htmlFor="upgrade-nudge-consent"
+            <h3
+              id="subscription-active-title"
               style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: 10,
-                marginBottom: 14,
-                cursor: upgradeNudgeSubmitting ? "default" : "pointer",
-                userSelect: "none",
+                fontFamily: "var(--font-cormorant)",
+                fontSize: 22,
+                fontWeight: 600,
+                color: "var(--ink)",
+                margin: "0 0 8px",
               }}
             >
-              <input
-                id="upgrade-nudge-consent"
-                type="checkbox"
-                checked={upgradeNudgeConsentChecked}
-                onChange={(e) => {
-                  setUpgradeNudgeConsentChecked(e.target.checked);
-                  setUpgradeNudgeError(null);
-                }}
-                disabled={upgradeNudgeSubmitting}
-                style={{
-                  marginTop: 2,
-                  width: 16,
-                  height: 16,
-                  flexShrink: 0,
-                  accentColor: "var(--ink)",
-                  cursor: upgradeNudgeSubmitting ? "not-allowed" : "pointer",
-                }}
-              />
-              <span style={{ fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.45 }}>
-                Check the box for an occasional nudge to keep clearing your shed.
-              </span>
-            </label>
-            {upgradeNudgeError ? (
-              <p style={{ color: "#c00", fontSize: 13, margin: "0 0 12px", lineHeight: 1.45 }}>
-                {upgradeNudgeError}
-              </p>
-            ) : null}
-            <button
-              type="button"
-              disabled={upgradeNudgeSubmitting}
-              onClick={() => void finishUpgradeNudgeAndPurchase()}
+              Your subscription is active.
+            </h3>
+            <p style={{ fontSize: 13.5, color: "var(--ink-soft)", lineHeight: 1.45, margin: "0 0 16px" }}>
+              Create a free account to save your Shed, sync across devices, and restore purchases anytime.
+            </p>
+            <a
+              href="/set-password?redirect=/shed"
               className="goshed-primary-btn"
               style={{
                 width: "100%",
@@ -1434,14 +970,37 @@ export function PaywallModal({
                 padding: "12px 16px",
                 fontSize: 15,
                 fontWeight: 600,
-                cursor: upgradeNudgeSubmitting ? "wait" : "pointer",
+                textDecoration: "none",
+                boxSizing: "border-box",
               }}
             >
-              {upgradeNudgeSubmitting ? "Working…" : "Continue"}
+              Create Free Account
+            </a>
+            <button
+              type="button"
+              onClick={() => {
+                setPostPurchaseAccountPromptOpen(false);
+                onClose();
+              }}
+              style={{
+                width: "100%",
+                marginTop: 10,
+                padding: "10px 12px",
+                background: "transparent",
+                border: "1px solid var(--surface2)",
+                borderRadius: 12,
+                color: "var(--ink-soft)",
+                fontSize: 14,
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              Continue as Guest / Skip for Now
             </button>
           </div>
         </div>
       ) : null}
+
     </div>
   );
 }

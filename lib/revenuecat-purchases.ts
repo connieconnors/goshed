@@ -140,12 +140,12 @@ export async function purchaseNativeIosPackage(aPackage: NativeRevenueCatPackage
   });
 }
 
-export async function restoreNativeIosPurchases(appUserID: string): Promise<void> {
+export async function restoreNativeIosPurchases(appUserID: string): Promise<{ activeEntitlements?: string[] }> {
   const configured = await ensureNativeIosPurchasesConfigured(appUserID);
   if (!configured) {
     throw new Error("Native billing is not available right now.");
   }
-  await sendBridgeRequest("restore", { appUserID });
+  return sendBridgeRequest<{ activeEntitlements?: string[] }>("restore", { appUserID });
 }
 
 export function getNativePackagePriceLabel(pkg: NativeRevenueCatPackage | null): string | null {

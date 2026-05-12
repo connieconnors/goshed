@@ -182,7 +182,7 @@ function SetPasswordForm() {
         Create a free account
       </h2>
       <p style={{ color: "var(--ink-soft)", fontSize: 14, lineHeight: 1.5, marginBottom: 20 }}>
-        Save your progress and view everything you&apos;ve cleared in your Shed.
+        Optional: save your Shed, sync across devices, restore purchases, and back up access.
       </p>
       <label
         htmlFor="set-password-notify-consent"

@@ -216,7 +216,7 @@ export function ShedSignupModal({ open, onClose }: Props) {
               Create a free account
             </h2>
             <p style={{ fontSize: 14, color: "var(--ink-soft)", lineHeight: 1.5, marginBottom: 20 }}>
-              Save your Shed to this account before you continue.
+              Optional: create an account to save your Shed, sync across devices, restore purchases, and back up access.
             </p>
             <label
               htmlFor="shed-signup-notify-consent"

@@ -1,4 +1,5 @@
 import { clearGuestTrialState } from "./guestGateStorage";
+import { hasGuestProAccess } from "./guestProStorage";
 
 export const GUEST_SHED_ITEMS_KEY = "goshed_guest_shed_items";
 const GUEST_SHED_MIGRATION_LOCK_KEY = "goshed_guest_shed_migration_lock";
@@ -105,7 +106,9 @@ export function addGuestShedItem(input: GuestShedItemInput): string | null {
   const index = existing.findIndex((item) => item.client_id === clientId);
   const next = index >= 0
     ? existing.map((item) => (item.client_id === clientId ? { ...item, ...nextItem } : item))
-    : [nextItem, ...existing].slice(0, 10);
+    : hasGuestProAccess()
+      ? [nextItem, ...existing]
+      : [nextItem, ...existing].slice(0, 10);
 
   tryWriteWithPhotoFallback(next, clientId);
   return clientId;

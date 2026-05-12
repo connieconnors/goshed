@@ -31,6 +31,7 @@ import {
   migrateGuestShedItemsToAccount,
   updateGuestShedItem,
 } from '@/lib/guestShedStorage';
+import { hasGuestProAccess } from '@/lib/guestProStorage';
 import { isElectronicsTipCandidate } from '@/lib/tips';
 
 type AnalyzeResult = {
@@ -280,8 +281,6 @@ function HomeContent() {
   const [paywallVoluntary, setPaywallVoluntary] = useState(false);
   const [paywallItemCount, setPaywallItemCount] = useState(FREE_LOGGED_IN_ITEM_LIMIT);
   const [showAiConsent, setShowAiConsent] = useState(false);
-  /** Resolves when user accepts AI note during Upgrade guest → purchase (see `waitForAiConsentBeforeGuestPurchase`). */
-  const aiConsentGuestPurchaseResolverRef = useRef<(() => void) | null>(null);
   /**
    * True once the user accepts the AI sheet this tab session (set synchronously with localStorage).
    * Upgrade signup keeps `goshed_ai_consent` so the home sheet does not return after account creation.
@@ -289,6 +288,7 @@ function HomeContent() {
   const aiConsentAgreedThisSessionRef = useRef(false);
   const [showGuestGateModal, setShowGuestGateModal] = useState(false);
   const [guestGateCount, setGuestGateCount] = useState(GUEST_ANALYSIS_LIMIT);
+  const [guestProActive, setGuestProActive] = useState(false);
   const [shedSignupModalOpen, setShedSignupModalOpen] = useState(false);
   const guestGateDismissedUntilCountRef = useRef(getGuestGateDismissedUntilCount());
   const guestAnalysisCountRef = useRef(getStoredGuestAnalysisCount());
@@ -328,6 +328,16 @@ function HomeContent() {
             : null;
 
     if (milestone !== null) {
+      if (milestone >= FREE_LOGGED_IN_ITEM_LIMIT) {
+        if (hasGuestProAccess()) {
+          setGuestProActive(true);
+          return;
+        }
+        setPaywallVoluntary(false);
+        setPaywallItemCount(next);
+        setShowPaywallModal(true);
+        return;
+      }
       setGuestGateCount(milestone);
       setShowGuestGateModal(true);
     }
@@ -353,6 +363,13 @@ function HomeContent() {
     guestAnalysisCountRef.current = clearedStaleGuestState ? 0 : getStoredGuestAnalysisCount();
     guestGateDismissedUntilCountRef.current = clearedStaleGuestState ? 0 : getGuestGateDismissedUntilCount();
     if (clearedStaleGuestState) setShowGuestGateModal(false);
+  }, []);
+
+  useEffect(() => {
+    setGuestProActive(hasGuestProAccess());
+    const onGuestProUpdated = () => setGuestProActive(hasGuestProAccess());
+    window.addEventListener("goshed-guest-pro-updated", onGuestProUpdated);
+    return () => window.removeEventListener("goshed-guest-pro-updated", onGuestProUpdated);
   }, []);
 
   useEffect(() => {
@@ -567,31 +584,7 @@ function HomeContent() {
       /* missing env or update failed — localStorage still records consent for this device */
     }
     setShowAiConsent(false);
-    const resolve = aiConsentGuestPurchaseResolverRef.current;
-    aiConsentGuestPurchaseResolverRef.current = null;
-    resolve?.();
   };
-
-  /** Blocks until the same AI consent sheet as initial load is accepted (if `goshed_ai_consent` is not set). */
-  const prepareGuestPurchase = useCallback(async () => {
-    const migration = await migrateGuestShedItemsToAccount();
-    if (migration.failed > 0) {
-      throw new Error("Create your account first so we can save your Shed before checkout.");
-    }
-    if (migration.migrated > 0) {
-      await refreshAuthSession();
-    }
-    if (typeof window !== "undefined" && localStorage.getItem("goshed_ai_consent")) {
-      return;
-    }
-    if (aiConsentAgreedThisSessionRef.current) {
-      return;
-    }
-    await new Promise<void>((resolve) => {
-      aiConsentGuestPurchaseResolverRef.current = resolve;
-      setShowAiConsent(true);
-    });
-  }, [refreshAuthSession]);
 
   /** Run analyze + recommend with an existing data URL (e.g. after paywall success). */
   const runAnalyzeWithDataUrl = useCallback(async (dataUrl: string) => {
@@ -701,11 +694,13 @@ function HomeContent() {
     if (!file) return;
     if (
       effectiveGuest &&
+      !guestProActive &&
       guestAnalysisCountRef.current >= FREE_LOGGED_IN_ITEM_LIMIT
     ) {
       e.target.value = '';
-      setGuestGateCount(guestAnalysisCountRef.current);
-      setShowGuestGateModal(true);
+      setPaywallVoluntary(false);
+      setPaywallItemCount(guestAnalysisCountRef.current);
+      setShowPaywallModal(true);
       return;
     }
     if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -791,6 +786,11 @@ function HomeContent() {
   }, []);
 
   const handlePaywallSuccess = useCallback(() => {
+    if (effectiveGuest) {
+      const guestHasPro = hasGuestProAccess();
+      setGuestProActive(guestHasPro);
+      if (guestHasPro) return;
+    }
     closePaywallModal();
     if (paywallVoluntary || hardPaywallRequired) {
       void refreshAuthSession();
@@ -798,7 +798,7 @@ function HomeContent() {
     }
     const dataUrl = analysisImageDataUrlRef.current;
     if (dataUrl) runAnalyzeWithDataUrl(dataUrl);
-  }, [closePaywallModal, paywallVoluntary, hardPaywallRequired, refreshAuthSession, runAnalyzeWithDataUrl]);
+  }, [effectiveGuest, closePaywallModal, paywallVoluntary, hardPaywallRequired, refreshAuthSession, runAnalyzeWithDataUrl]);
 
   // Save to Supabase when we have analysis + recommendation and user is logged in (once per item).
   // Key is by item_label only so changing recommendation (Other options) updates via PATCH, doesn't create a second item.
@@ -1206,7 +1206,7 @@ function HomeContent() {
   };
   const guestGateBody =
     guestGateCount >= FREE_LOGGED_IN_ITEM_LIMIT
-      ? `Create or sign in to save your Shed, then choose a plan to keep going.`
+      ? "Subscribe to keep going. Creating a free account is optional if you want to save your Shed, sync across devices, restore purchases, or back up access."
       : guestGateCount >= GUEST_GATE_REMINDER_COUNT
         ? "Create a free account now so your Shed is saved before you upgrade."
         : MOMENT_COPY.guestGateBody;
@@ -1216,12 +1216,11 @@ function HomeContent() {
       : guestGateCount >= GUEST_GATE_REMINDER_COUNT
         ? "One item left in your free shed."
         : "Create a free account to save your Shed.";
-  const guestGatePrimaryCta = guestGateCount >= FREE_LOGGED_IN_ITEM_LIMIT ? "Create account to continue" : "Create a free account";
+  const guestGatePrimaryCta = guestGateCount >= FREE_LOGGED_IN_ITEM_LIMIT ? "Continue to GoShed Pro" : "Create a free account";
   const showGuestGateSignInCta = guestGateCount >= FREE_LOGGED_IN_ITEM_LIMIT;
   const guestGateIsHardLimit = guestGateCount >= FREE_LOGGED_IN_ITEM_LIMIT;
-  const guestGateAuthRedirect = encodeURIComponent("/?paywall=1");
-  const guestGateCreateAccountHref = guestGateIsHardLimit ? `/set-password?redirect=${guestGateAuthRedirect}` : "/set-password";
-  const guestGateSignInHref = `/login?redirect=${guestGateAuthRedirect}`;
+  const guestGateCreateAccountHref = "/set-password";
+  const guestGateSignInHref = "/login?redirect=/account";
   const guestGateAlreadyAccountLabel = isLoggedIn === true ? "Continue to plans" : "I already have an account";
   const donationFallbackMessage =
     donationPlacesFallback === "permission"
@@ -1814,7 +1813,6 @@ function HomeContent() {
         onPurchaseSuccess={handlePaywallSuccess}
         itemCount={hardPaywallRequired && typeof authItemCount === "number" ? authItemCount : paywallItemCount}
         voluntary={paywallVoluntary && !hardPaywallRequired}
-        beforeGuestPurchase={prepareGuestPurchase}
       />
       {showFreePlanNudge && !hardPaywallRequired && (
         <div
@@ -1951,27 +1949,56 @@ function HomeContent() {
               {guestGateBody}
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <Link
-                href={guestGateCreateAccountHref}
-                onClick={() => {
-                  setShowGuestGateModal(false);
-                }}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  padding: "14px 20px",
-                  background: "var(--ink)",
-                  color: "var(--white)",
-                  borderRadius: 12,
-                  fontSize: 16,
-                  fontWeight: 600,
-                  textAlign: "center",
-                  textDecoration: "none",
-                  boxSizing: "border-box",
-                }}
-              >
-                {guestGatePrimaryCta}
-              </Link>
+              {guestGateIsHardLimit ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowGuestGateModal(false);
+                    setPaywallVoluntary(false);
+                    setPaywallItemCount(guestAnalysisCountRef.current);
+                    setShowPaywallModal(true);
+                  }}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    padding: "14px 20px",
+                    background: "var(--ink)",
+                    color: "var(--white)",
+                    border: "none",
+                    borderRadius: 12,
+                    fontSize: 16,
+                    fontWeight: 600,
+                    textAlign: "center",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    boxSizing: "border-box",
+                  }}
+                >
+                  {guestGatePrimaryCta}
+                </button>
+              ) : (
+                <Link
+                  href={guestGateCreateAccountHref}
+                  onClick={() => {
+                    setShowGuestGateModal(false);
+                  }}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    padding: "14px 20px",
+                    background: "var(--ink)",
+                    color: "var(--white)",
+                    borderRadius: 12,
+                    fontSize: 16,
+                    fontWeight: 600,
+                    textAlign: "center",
+                    textDecoration: "none",
+                    boxSizing: "border-box",
+                  }}
+                >
+                  {guestGatePrimaryCta}
+                </Link>
+              )}
               {showGuestGateSignInCta ? (
                 <button
                   type="button"
