@@ -222,12 +222,6 @@ export default function ShedPage() {
   const savedItemTotal =
     typeof itemCount === "number" && Number.isFinite(itemCount) ? itemCount : items.length;
   const hasPremiumAccess = isPro;
-  const hardPaywallRequired =
-    !sessionLoading &&
-    !!sessionUser &&
-    !loading &&
-    !hasPremiumAccess &&
-    savedItemTotal >= FREE_LOGGED_IN_ITEM_LIMIT;
 
   const closePaywallModal = useCallback(() => {
     setShowPaywallModal(false);
@@ -372,9 +366,9 @@ export default function ShedPage() {
 
         {!hasPremiumAccess ? (
           <PaywallModal
-            open={showPaywallModal || hardPaywallRequired}
+            open={showPaywallModal}
             onClose={closePaywallModal}
-            voluntary={!hardPaywallRequired}
+            voluntary
             itemCount={FREE_LOGGED_IN_ITEM_LIMIT}
             onPurchaseSuccess={() => {
               void refreshAuthSession();

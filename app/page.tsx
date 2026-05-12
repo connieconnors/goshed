@@ -259,8 +259,6 @@ function HomeContent() {
     refresh: refreshAuthSession,
     loading: sessionLoading,
     user: authUser,
-    itemCount: authItemCount,
-    isPro,
     welcomeSent,
   } = useAuthSession();
   const isLoggedIn = sessionLoading ? null : !!authUser;
@@ -295,12 +293,6 @@ function HomeContent() {
   /** Force guest-mode limit from URL (e.g. ?guest=1). Set in useEffect to avoid hydration mismatch. */
   const [forceGuestMode, setForceGuestMode] = useState(false);
   const effectiveGuest = (isLoggedIn !== true) || forceGuestMode;
-  const hardPaywallRequired =
-    !sessionLoading &&
-    !!authUser &&
-    !isPro &&
-    typeof authItemCount === "number" &&
-    authItemCount >= FREE_LOGGED_IN_ITEM_LIMIT;
 
   useEffect(() => {
     if (chosenDecision == null || chosenDecision !== 'sell') {
@@ -319,25 +311,13 @@ function HomeContent() {
 
     const dismissedUntil = guestGateDismissedUntilCountRef.current;
     const milestone =
-      previous < FREE_LOGGED_IN_ITEM_LIMIT && next >= FREE_LOGGED_IN_ITEM_LIMIT
-        ? FREE_LOGGED_IN_ITEM_LIMIT
-        : previous < GUEST_GATE_REMINDER_COUNT && next >= GUEST_GATE_REMINDER_COUNT && GUEST_GATE_REMINDER_COUNT > dismissedUntil
-          ? GUEST_GATE_REMINDER_COUNT
-          : previous < GUEST_ANALYSIS_LIMIT && next >= GUEST_ANALYSIS_LIMIT && GUEST_ANALYSIS_LIMIT > dismissedUntil
-            ? GUEST_ANALYSIS_LIMIT
-            : null;
+      previous < GUEST_GATE_REMINDER_COUNT && next >= GUEST_GATE_REMINDER_COUNT && GUEST_GATE_REMINDER_COUNT > dismissedUntil
+        ? GUEST_GATE_REMINDER_COUNT
+        : previous < GUEST_ANALYSIS_LIMIT && next >= GUEST_ANALYSIS_LIMIT && GUEST_ANALYSIS_LIMIT > dismissedUntil
+          ? GUEST_ANALYSIS_LIMIT
+          : null;
 
     if (milestone !== null) {
-      if (milestone >= FREE_LOGGED_IN_ITEM_LIMIT) {
-        if (hasGuestProAccess()) {
-          setGuestProActive(true);
-          return;
-        }
-        setPaywallVoluntary(false);
-        setPaywallItemCount(next);
-        setShowPaywallModal(true);
-        return;
-      }
       setGuestGateCount(milestone);
       setShowGuestGateModal(true);
     }
@@ -397,15 +377,6 @@ function HomeContent() {
     window.addEventListener("goshed-open-voluntary-paywall", onVoluntary);
     return () => window.removeEventListener("goshed-open-voluntary-paywall", onVoluntary);
   }, []);
-
-  useEffect(() => {
-    if (sessionLoading || !authUser || isPro) return;
-    if (typeof authItemCount !== "number" || authItemCount < FREE_LOGGED_IN_ITEM_LIMIT) return;
-    setShowFreePlanNudge(false);
-    setPaywallVoluntary(false);
-    setPaywallItemCount(authItemCount);
-    setShowPaywallModal(true);
-  }, [sessionLoading, authUser, authItemCount, isPro]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -792,13 +763,13 @@ function HomeContent() {
       if (guestHasPro) return;
     }
     closePaywallModal();
-    if (paywallVoluntary || hardPaywallRequired) {
+    if (paywallVoluntary) {
       void refreshAuthSession();
       return;
     }
     const dataUrl = analysisImageDataUrlRef.current;
     if (dataUrl) runAnalyzeWithDataUrl(dataUrl);
-  }, [effectiveGuest, closePaywallModal, paywallVoluntary, hardPaywallRequired, refreshAuthSession, runAnalyzeWithDataUrl]);
+  }, [effectiveGuest, closePaywallModal, paywallVoluntary, refreshAuthSession, runAnalyzeWithDataUrl]);
 
   // Save to Supabase when we have analysis + recommendation and user is logged in (once per item).
   // Key is by item_label only so changing recommendation (Other options) updates via PATCH, doesn't create a second item.
@@ -850,13 +821,6 @@ function HomeContent() {
         refreshAuthSession()
           .then((snap) => {
             const savedCount = typeof snap.itemCount === "number" ? snap.itemCount : null;
-            if (savedCount !== null && savedCount >= FREE_LOGGED_IN_ITEM_LIMIT && snap.isPro !== true) {
-              setShowFreePlanNudge(false);
-              setPaywallVoluntary(false);
-              setPaywallItemCount(savedCount);
-              setShowPaywallModal(true);
-              return;
-            }
             if (
               savedCount !== null &&
               savedCount >= FREE_LOGGED_IN_ITEM_LIMIT - 1 &&
@@ -1808,13 +1772,13 @@ function HomeContent() {
       />
 
       <PaywallModal
-        open={showPaywallModal || hardPaywallRequired}
+        open={showPaywallModal}
         onClose={closePaywallModal}
         onPurchaseSuccess={handlePaywallSuccess}
-        itemCount={hardPaywallRequired && typeof authItemCount === "number" ? authItemCount : paywallItemCount}
-        voluntary={paywallVoluntary && !hardPaywallRequired}
+        itemCount={paywallItemCount}
+        voluntary={paywallVoluntary}
       />
-      {showFreePlanNudge && !hardPaywallRequired && (
+      {showFreePlanNudge && (
         <div
           role="dialog"
           aria-modal="true"

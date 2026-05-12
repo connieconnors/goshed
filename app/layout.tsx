@@ -7,7 +7,6 @@ import { ClearGuestGateDismissedOnAuth } from "@/app/components/ClearGuestGateDi
 import { AuthSessionProvider } from "@/lib/auth-session-context";
 import { PasswordOnboardingGate } from "@/app/components/PasswordOnboardingGate";
 import { SiteFooter } from "@/app/components/SiteFooter";
-import { HardPaywallGate } from "@/app/components/HardPaywallGate";
 
 const GA_MEASUREMENT_ID = "G-CPJMZSBPRJ";
 
@@ -88,7 +87,6 @@ export default function RootLayout({
           >
             <PasswordOnboardingGate>
               <ClearGuestGateDismissedOnAuth />
-              <HardPaywallGate />
               {children}
             </PasswordOnboardingGate>
           </div>
