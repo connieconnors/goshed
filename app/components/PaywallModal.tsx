@@ -544,7 +544,7 @@ export function PaywallModal({
   const monthlyCtaPrice = monthlyPriceLabel ? `${monthlyPriceLabel}/month` : "$2.99/month";
   const planSummary =
     billingUserIsGuest
-      ? "Subscribe now. Creating an account is optional and helps save your Shed, sync across devices, restore purchases, and back up access."
+      ? "Subscribe now for unlimited decisions. Create an account anytime to save and sync across devices."
       : yearlyPriceLabel && monthlyPriceLabel
       ? `Keep going for ${monthlyPriceLabel} a month — or ${yearlyPriceLabel} for the year.`
       : "Choose a plan to keep going with unlimited items.";

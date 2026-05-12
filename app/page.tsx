@@ -1215,7 +1215,7 @@ function HomeContent() {
       ? "You've filled your free shed."
       : guestGateCount >= GUEST_GATE_REMINDER_COUNT
         ? "One item left in your free shed."
-        : "Create a free account to save your Shed.";
+        : "Save your Shed for free.";
   const guestGatePrimaryCta = guestGateCount >= FREE_LOGGED_IN_ITEM_LIMIT ? "Continue to GoShed Pro" : "Create a free account";
   const showGuestGateSignInCta = guestGateCount >= FREE_LOGGED_IN_ITEM_LIMIT;
   const guestGateIsHardLimit = guestGateCount >= FREE_LOGGED_IN_ITEM_LIMIT;
