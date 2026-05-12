@@ -756,6 +756,12 @@ function HomeContent() {
     setPaywallVoluntary(false);
   }, []);
 
+  const dismissHardPaywallToShed = useCallback(() => {
+    setShowPaywallModal(false);
+    setPaywallVoluntary(false);
+    router.push("/shed");
+  }, [router]);
+
   const handlePaywallSuccess = useCallback(() => {
     if (effectiveGuest) {
       const guestHasPro = hasGuestProAccess();
@@ -1774,6 +1780,7 @@ function HomeContent() {
       <PaywallModal
         open={showPaywallModal}
         onClose={closePaywallModal}
+        onHardDismiss={dismissHardPaywallToShed}
         onPurchaseSuccess={handlePaywallSuccess}
         itemCount={paywallItemCount}
         voluntary={paywallVoluntary}

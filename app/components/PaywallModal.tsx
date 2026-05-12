@@ -27,6 +27,7 @@ import type { Offering, Package, Offerings } from "@revenuecat/purchases-js";
 type PaywallModalProps = {
   open: boolean;
   onClose: () => void;
+  onHardDismiss?: () => void;
   onPurchaseSuccess?: () => void;
   itemCount?: number;
   /** When true, title uses voluntary upgrade copy (footer Upgrade); limit-driven paywalls omit this. */
@@ -114,6 +115,7 @@ function resetHorizontalViewport() {
 export function PaywallModal({
   open,
   onClose,
+  onHardDismiss,
   onPurchaseSuccess,
   voluntary = false,
 }: PaywallModalProps) {
@@ -523,6 +525,7 @@ export function PaywallModal({
 
   const signedIn = !!userId;
   const canDismiss = voluntary;
+  const canHardDismiss = !voluntary && !!onHardDismiss;
   const showPlansSpinner = signedIn && (plansLoading || !plansSettled);
   const showPurchaseRow = plansSettled && !showPlansSpinner;
 
@@ -594,9 +597,11 @@ export function PaywallModal({
         <button
           type="button"
           onClick={() => {
+            if (purchasing) return;
             if (canDismiss) onClose();
+            else if (canHardDismiss) onHardDismiss?.();
           }}
-          aria-label="Close"
+          aria-label={canHardDismiss ? "Back to My Shed" : "Close"}
           style={{
             position: "absolute",
             top: 10,
@@ -612,9 +617,9 @@ export function PaywallModal({
             color: "rgba(107, 91, 69, 0.78)",
             fontSize: 20,
             lineHeight: 1,
-            cursor: canDismiss ? "pointer" : "default",
+            cursor: (canDismiss || canHardDismiss) && !purchasing ? "pointer" : "default",
             fontFamily: "inherit",
-            visibility: canDismiss ? "visible" : "hidden",
+            visibility: canDismiss || canHardDismiss ? "visible" : "hidden",
           }}
         >
           ×
