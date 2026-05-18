@@ -9,7 +9,7 @@ import { migrateGuestShedItemsToAccount } from "@/lib/guestShedStorage";
 import { syncGuestProPurchaseToAccount } from "@/lib/guestProStorage";
 
 const LAST_LOGIN_EMAIL_KEY = "goshed_last_login_email";
-const PASSWORD_RESET_REDIRECT_URL = "https://goshed.app/auth/callback?next=/reset-password";
+const PASSWORD_RESET_REDIRECT_URL = "https://www.goshed.app/auth/callback?next=/reset-password";
 const PASSWORD_RESET_NEUTRAL_MESSAGE =
   "If an account exists for that email, we’ll send a password reset link. Please check your inbox and spam folder.";
 
