@@ -12,6 +12,7 @@ function safeRedirectPath(next: string | null): string {
 }
 
 type CookieToSet = { name: string; value: string; options?: Record<string, unknown> };
+const PASSWORD_RESET_FLOW_COOKIE = "goshed_password_reset_flow";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -49,12 +50,18 @@ export async function GET(request: Request) {
 
   const cookieStore = await cookies();
   const incomingCookieNames = cookieStore.getAll().map((cookie) => cookie.name);
+  const hasPasswordResetIntent =
+    nextParam === "/reset-password" ||
+    searchParams.get("type") === "recovery" ||
+    cookieStore.get(PASSWORD_RESET_FLOW_COOKIE)?.value === "1";
   const cookiesToSet: CookieToSet[] = [];
   const isProduction = process.env.NODE_ENV === "production";
 
   console.log("[auth/callback] incoming cookies before exchange", {
     nextParam,
     origin,
+    hasPasswordResetIntent,
+    authType: searchParams.get("type"),
     cookieNames: incomingCookieNames,
     hasSupabaseCookie: incomingCookieNames.some((name) => name.includes("supabase") || name.startsWith("sb-")),
   });
@@ -98,15 +105,17 @@ export async function GET(request: Request) {
       status: authError.status ?? null,
       nextParam,
       origin,
+      hasPasswordResetIntent,
+      authType: searchParams.get("type"),
       cookieNames: incomingCookieNames,
       hasSupabaseCookie: incomingCookieNames.some((name) => name.includes("supabase") || name.startsWith("sb-")),
       error,
     });
     const loginUrl = new URL("/login", origin);
     loginUrl.searchParams.set("error", "auth");
-    if (nextParam === "/reset-password") {
+    if (hasPasswordResetIntent) {
       loginUrl.searchParams.set("flow", "password-reset");
-      loginUrl.searchParams.set("next", nextParam);
+      loginUrl.searchParams.set("next", nextParam ?? "/reset-password");
       loginUrl.searchParams.set("callback_origin", origin);
       if (error.message) loginUrl.searchParams.set("auth_message", error.message);
       if (authError.code) loginUrl.searchParams.set("auth_code", authError.code);
@@ -172,7 +181,7 @@ export async function GET(request: Request) {
     }
   }
 
-  const path = safeRedirectPath(nextParam);
+  const path = hasPasswordResetIntent ? "/reset-password" : safeRedirectPath(nextParam);
   const target = `${origin}${path}`;
   const sep = target.includes("?") ? "&" : "?";
   const finalUrl = `${target}${sep}signed_in=1`;
@@ -184,6 +193,12 @@ export async function GET(request: Request) {
   });
 
   const redirectResponse = NextResponse.redirect(finalUrl);
+  if (hasPasswordResetIntent) {
+    redirectResponse.cookies.set(PASSWORD_RESET_FLOW_COOKIE, "", { path: "/", maxAge: 0 });
+    if (url.hostname.endsWith("goshed.app")) {
+      redirectResponse.cookies.set(PASSWORD_RESET_FLOW_COOKIE, "", { path: "/", domain: ".goshed.app", maxAge: 0 });
+    }
+  }
   cookiesToSet.forEach(({ name, value, options }) => {
     redirectResponse.cookies.set(name, value, options as Parameters<NextResponse["cookies"]["set"]>[2]);
   });

@@ -9,7 +9,8 @@ import { migrateGuestShedItemsToAccount } from "@/lib/guestShedStorage";
 import { syncGuestProPurchaseToAccount } from "@/lib/guestProStorage";
 
 const LAST_LOGIN_EMAIL_KEY = "goshed_last_login_email";
-const PASSWORD_RESET_REDIRECT_PATH = "/auth/callback?next=/reset-password";
+const PASSWORD_RESET_FLOW_COOKIE = "goshed_password_reset_flow";
+const PASSWORD_RESET_REDIRECT_PATH = "/auth/callback";
 const PASSWORD_RESET_NEUTRAL_MESSAGE =
   "If an account exists for that email, we’ll send a password reset link. Please check your inbox and spam folder.";
 
@@ -129,6 +130,10 @@ function LoginForm() {
     try {
       const supabase = createSupabaseBrowserClient();
       const resetRedirectUrl = new URL(PASSWORD_RESET_REDIRECT_PATH, window.location.origin).toString();
+      const resetCookieDomain = window.location.hostname.endsWith("goshed.app") ? "; Domain=.goshed.app" : "";
+      document.cookie = `${PASSWORD_RESET_FLOW_COOKIE}=1; Max-Age=1800; Path=/; SameSite=Lax${resetCookieDomain}${
+        window.location.protocol === "https:" ? "; Secure" : ""
+      }`;
       const { error } = await supabase.auth.resetPasswordForEmail(emailNorm, {
         redirectTo: resetRedirectUrl,
       });
