@@ -50,10 +50,11 @@ export async function GET(request: Request) {
 
   const cookieStore = await cookies();
   const incomingCookieNames = cookieStore.getAll().map((cookie) => cookie.name);
+  const passwordResetFlowCookie = cookieStore.get(PASSWORD_RESET_FLOW_COOKIE)?.value ?? null;
   const hasPasswordResetIntent =
     nextParam === "/reset-password" ||
     searchParams.get("type") === "recovery" ||
-    cookieStore.get(PASSWORD_RESET_FLOW_COOKIE)?.value === "1";
+    passwordResetFlowCookie === "1";
   const cookiesToSet: CookieToSet[] = [];
   const isProduction = process.env.NODE_ENV === "production";
 
@@ -61,6 +62,7 @@ export async function GET(request: Request) {
     nextParam,
     origin,
     hasPasswordResetIntent,
+    passwordResetFlowCookiePresent: passwordResetFlowCookie === "1",
     authType: searchParams.get("type"),
     cookieNames: incomingCookieNames,
     hasSupabaseCookie: incomingCookieNames.some((name) => name.includes("supabase") || name.startsWith("sb-")),
@@ -106,6 +108,7 @@ export async function GET(request: Request) {
       nextParam,
       origin,
       hasPasswordResetIntent,
+      passwordResetFlowCookiePresent: passwordResetFlowCookie === "1",
       authType: searchParams.get("type"),
       cookieNames: incomingCookieNames,
       hasSupabaseCookie: incomingCookieNames.some((name) => name.includes("supabase") || name.startsWith("sb-")),
@@ -188,6 +191,8 @@ export async function GET(request: Request) {
 
   console.log("[auth/callback] issuing 302 redirect (PasswordOnboardingGate runs only on client after HTML loads; it does not run in this route)", {
     finalUrl,
+    hasPasswordResetIntent,
+    passwordResetFlowCookiePresent: passwordResetFlowCookie === "1",
     cookiesToAttach: cookiesToSet.length,
     cookieNames: cookiesToSet.map((c) => c.name),
   });

@@ -130,8 +130,20 @@ function LoginForm() {
     try {
       const supabase = createSupabaseBrowserClient();
       const resetRedirectUrl = new URL(PASSWORD_RESET_REDIRECT_PATH, window.location.origin).toString();
+      try {
+        const resetFlowRes = await fetch("/api/auth/password-reset-flow", {
+          method: "POST",
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (!resetFlowRes.ok) {
+          console.error("[login] password reset flow cookie API failed:", resetFlowRes.status);
+        }
+      } catch (resetFlowError) {
+        console.error("[login] password reset flow cookie API request failed:", resetFlowError);
+      }
       const resetCookieDomain = window.location.hostname.endsWith("goshed.app") ? "; Domain=.goshed.app" : "";
-      document.cookie = `${PASSWORD_RESET_FLOW_COOKIE}=1; Max-Age=1800; Path=/; SameSite=Lax${resetCookieDomain}${
+      document.cookie = `${PASSWORD_RESET_FLOW_COOKIE}=1; Max-Age=600; Path=/; SameSite=Lax${resetCookieDomain}${
         window.location.protocol === "https:" ? "; Secure" : ""
       }`;
       const { error } = await supabase.auth.resetPasswordForEmail(emailNorm, {
