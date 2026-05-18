@@ -6,6 +6,8 @@ import { useEffect, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
 
 const PASSWORD_RESET_FLOW_COOKIE = "goshed_password_reset_flow";
+const RESET_LINK_ERROR_MESSAGE =
+  "This password reset link has expired or is invalid. Please request a new password reset email.";
 
 function clearPasswordResetFlowCookie() {
   if (typeof document === "undefined") return;
@@ -13,15 +15,6 @@ function clearPasswordResetFlowCookie() {
   if (window.location.hostname.endsWith("goshed.app")) {
     document.cookie = `${PASSWORD_RESET_FLOW_COOKIE}=; Max-Age=0; Path=/; Domain=.goshed.app; SameSite=Lax; Secure`;
   }
-}
-
-function recoveryErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) return error.message;
-  if (typeof error === "object" && error !== null && "message" in error) {
-    const message = (error as { message?: unknown }).message;
-    if (typeof message === "string" && message.trim()) return message;
-  }
-  return "Could not establish a password recovery session.";
 }
 
 function firstParam(name: string, searchParams: URLSearchParams, hashParams: URLSearchParams): string | null {
@@ -59,14 +52,12 @@ export default function RecoveryPage() {
           });
           if (verifyError) throw verifyError;
         } else {
-          throw new Error(
-            "This reset link does not contain recovery credentials. Please request a new password reset link."
-          );
+          throw new Error("Missing password reset token.");
         }
 
         const { data: userData, error: userError } = await supabase.auth.getUser();
         if (userError) throw userError;
-        if (!userData.user) throw new Error("No recovery user was found. Please request a new password reset link.");
+        if (!userData.user) throw new Error("Password reset session did not include a user.");
 
         if (!cancelled) {
           router.replace("/reset-password");
@@ -74,7 +65,7 @@ export default function RecoveryPage() {
         }
       } catch (recoveryError) {
         console.error("[auth/recovery] failed to establish recovery session:", recoveryError);
-        if (!cancelled) setError(recoveryErrorMessage(recoveryError));
+        if (!cancelled) setError(RESET_LINK_ERROR_MESSAGE);
       }
     };
 
@@ -87,13 +78,18 @@ export default function RecoveryPage() {
   return (
     <div
       style={{
-        padding: 40,
+        padding: "40px 28px",
         maxWidth: 400,
         margin: "0 auto",
         fontFamily: "inherit",
         color: "var(--ink)",
       }}
     >
+      <p style={{ margin: "0 0 16px", textAlign: "center" }}>
+        <Link href="/login" style={{ fontSize: 13, color: "var(--ink-soft)", textDecoration: "underline" }}>
+          ← Back to sign in
+        </Link>
+      </p>
       <h2
         style={{
           fontFamily: "var(--font-display)",
@@ -103,18 +99,18 @@ export default function RecoveryPage() {
           color: "var(--ink)",
         }}
       >
-        Preparing password reset
+        Preparing your secure password reset…
       </h2>
       {error ? (
         <>
           <p style={{ color: "#b42318", fontSize: 14, marginBottom: 12, lineHeight: 1.45 }}>{error}</p>
           <Link href="/login" style={{ fontSize: 14, color: "var(--ink-soft)", textDecoration: "underline" }}>
-            Back to sign in
+            Request a new reset email
           </Link>
         </>
       ) : (
         <p style={{ color: "var(--ink-soft)", fontSize: 14, lineHeight: 1.45 }}>
-          Checking your reset link…
+          One moment while we open the password reset form.
         </p>
       )}
     </div>
