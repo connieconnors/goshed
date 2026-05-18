@@ -9,6 +9,9 @@ import { migrateGuestShedItemsToAccount } from "@/lib/guestShedStorage";
 import { syncGuestProPurchaseToAccount } from "@/lib/guestProStorage";
 
 const LAST_LOGIN_EMAIL_KEY = "goshed_last_login_email";
+const PASSWORD_RESET_REDIRECT_URL = "https://goshed.app/auth/callback?next=/reset-password";
+const PASSWORD_RESET_NEUTRAL_MESSAGE =
+  "If an account exists for that email, we’ll send a password reset link. Please check your inbox and spam folder.";
 
 function LoginForm() {
   const router = useRouter();
@@ -115,11 +118,10 @@ function LoginForm() {
     try {
       const supabase = createSupabaseBrowserClient();
       const { error } = await supabase.auth.resetPasswordForEmail(emailNorm, {
-        redirectTo: `${window.location.origin}/auth/callback?next=/account`,
+        redirectTo: PASSWORD_RESET_REDIRECT_URL,
       });
       if (error) {
-        setResetError(error.message || "Could not send reset email. Try again.");
-        return;
+        console.error("[login] resetPasswordForEmail failed:", error.message, error);
       }
       setResetSuccess(true);
     } finally {
@@ -214,7 +216,7 @@ function LoginForm() {
 
       {resetSuccess ? (
         <p style={{ color: "var(--green)", fontSize: 14, marginBottom: 12, lineHeight: 1.45, fontWeight: 500 }}>
-          Check your email for a password reset link. If you do not see it, check your spam folder.
+          {PASSWORD_RESET_NEUTRAL_MESSAGE}
         </p>
       ) : null}
 
