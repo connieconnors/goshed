@@ -143,7 +143,7 @@ function LoginForm() {
         console.error("[login] password reset flow cookie API request failed:", resetFlowError);
       }
       const resetCookieDomain = window.location.hostname.endsWith("goshed.app") ? "; Domain=.goshed.app" : "";
-      document.cookie = `${PASSWORD_RESET_FLOW_COOKIE}=1; Max-Age=600; Path=/; SameSite=Lax${resetCookieDomain}${
+      document.cookie = `${PASSWORD_RESET_FLOW_COOKIE}=${Date.now()}; Max-Age=600; Path=/; SameSite=Lax${resetCookieDomain}${
         window.location.protocol === "https:" ? "; Secure" : ""
       }`;
       const { error } = await supabase.auth.resetPasswordForEmail(emailNorm, {

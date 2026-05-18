@@ -13,7 +13,7 @@ export function POST(request: Request) {
     secure: url.protocol === "https:" || process.env.NODE_ENV === "production",
   };
 
-  response.cookies.set(PASSWORD_RESET_FLOW_COOKIE, "1", {
+  response.cookies.set(PASSWORD_RESET_FLOW_COOKIE, Date.now().toString(), {
     ...cookieOptions,
     ...(url.hostname.endsWith("goshed.app") ? { domain: ".goshed.app" } : {}),
   });

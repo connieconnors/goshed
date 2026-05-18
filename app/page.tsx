@@ -111,6 +111,14 @@ const MAX_IMAGE_DIMENSION = 1600;
 const JPEG_QUALITY = 0.82;
 const PASSWORD_RESET_FLOW_COOKIE = "goshed_password_reset_flow";
 
+function clearPasswordResetFlowCookie() {
+  if (typeof document === "undefined") return;
+  document.cookie = `${PASSWORD_RESET_FLOW_COOKIE}=; Max-Age=0; Path=/; SameSite=Lax`;
+  if (window.location.hostname.endsWith("goshed.app")) {
+    document.cookie = `${PASSWORD_RESET_FLOW_COOKIE}=; Max-Age=0; Path=/; Domain=.goshed.app; SameSite=Lax; Secure`;
+  }
+}
+
 /** Resize image to reduce payload and avoid body/API limits; returns data URL. */
 function resizeAndToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -289,7 +297,6 @@ function HomeContent() {
   const [guestGateCount, setGuestGateCount] = useState(GUEST_ANALYSIS_LIMIT);
   const [guestProActive, setGuestProActive] = useState(false);
   const [shedSignupModalOpen, setShedSignupModalOpen] = useState(false);
-  const [passwordResetFlowDetected, setPasswordResetFlowDetected] = useState(false);
   const guestGateDismissedUntilCountRef = useRef(getGuestGateDismissedUntilCount());
   const guestAnalysisCountRef = useRef(getStoredGuestAnalysisCount());
   /** Force guest-mode limit from URL (e.g. ?guest=1). Set in useEffect to avoid hydration mismatch. */
@@ -348,13 +355,7 @@ function HomeContent() {
   }, []);
 
   useEffect(() => {
-    if (typeof document === "undefined") return;
-    setPasswordResetFlowDetected(
-      document.cookie
-        .split(";")
-        .map((cookie) => cookie.trim())
-        .some((cookie) => cookie === `${PASSWORD_RESET_FLOW_COOKIE}=1`)
-    );
+    clearPasswordResetFlowCookie();
   }, []);
 
   useEffect(() => {
@@ -1237,23 +1238,6 @@ function HomeContent() {
   return (
     <main className="goshed-home-main" style={homeShellStyle}>
       <div style={{ width: '100%', maxWidth: '390px' }}>
-        {passwordResetFlowDetected ? (
-          <div
-            style={{
-              marginBottom: 14,
-              padding: "10px 12px",
-              borderRadius: 12,
-              border: "1px solid #d92d20",
-              background: "#fff4f2",
-              color: "#b42318",
-              fontSize: 13,
-              lineHeight: 1.4,
-              fontWeight: 600,
-            }}
-          >
-            Password reset flow detected
-          </div>
-        ) : null}
         {/* Header — z-index keeps controls above in-page layers; Sign in uses router.push so navigation isn’t lost to overlays/prefetch edge cases */}
         <div
           style={{

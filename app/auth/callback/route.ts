@@ -13,6 +13,22 @@ function safeRedirectPath(next: string | null): string {
 
 type CookieToSet = { name: string; value: string; options?: Record<string, unknown> };
 const PASSWORD_RESET_FLOW_COOKIE = "goshed_password_reset_flow";
+const PASSWORD_RESET_FLOW_MAX_AGE_MS = 10 * 60 * 1000;
+
+function isFreshPasswordResetFlowCookie(value: string | null): boolean {
+  if (!value) return false;
+  const startedAt = Number(value);
+  if (!Number.isFinite(startedAt)) return false;
+  const ageMs = Date.now() - startedAt;
+  return ageMs >= 0 && ageMs <= PASSWORD_RESET_FLOW_MAX_AGE_MS;
+}
+
+function clearPasswordResetFlowCookie(response: NextResponse, hostname: string) {
+  response.cookies.set(PASSWORD_RESET_FLOW_COOKIE, "", { path: "/", maxAge: 0 });
+  if (hostname.endsWith("goshed.app")) {
+    response.cookies.set(PASSWORD_RESET_FLOW_COOKIE, "", { path: "/", domain: ".goshed.app", maxAge: 0 });
+  }
+}
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -51,10 +67,11 @@ export async function GET(request: Request) {
   const cookieStore = await cookies();
   const incomingCookieNames = cookieStore.getAll().map((cookie) => cookie.name);
   const passwordResetFlowCookie = cookieStore.get(PASSWORD_RESET_FLOW_COOKIE)?.value ?? null;
+  const passwordResetFlowCookieFresh = isFreshPasswordResetFlowCookie(passwordResetFlowCookie);
   const hasPasswordResetIntent =
     nextParam === "/reset-password" ||
     searchParams.get("type") === "recovery" ||
-    passwordResetFlowCookie === "1";
+    passwordResetFlowCookieFresh;
   const cookiesToSet: CookieToSet[] = [];
   const isProduction = process.env.NODE_ENV === "production";
 
@@ -62,7 +79,8 @@ export async function GET(request: Request) {
     nextParam,
     origin,
     hasPasswordResetIntent,
-    passwordResetFlowCookiePresent: passwordResetFlowCookie === "1",
+    passwordResetFlowCookiePresent: passwordResetFlowCookie !== null,
+    passwordResetFlowCookieFresh,
     authType: searchParams.get("type"),
     cookieNames: incomingCookieNames,
     hasSupabaseCookie: incomingCookieNames.some((name) => name.includes("supabase") || name.startsWith("sb-")),
@@ -108,7 +126,8 @@ export async function GET(request: Request) {
       nextParam,
       origin,
       hasPasswordResetIntent,
-      passwordResetFlowCookiePresent: passwordResetFlowCookie === "1",
+      passwordResetFlowCookiePresent: passwordResetFlowCookie !== null,
+      passwordResetFlowCookieFresh,
       authType: searchParams.get("type"),
       cookieNames: incomingCookieNames,
       hasSupabaseCookie: incomingCookieNames.some((name) => name.includes("supabase") || name.startsWith("sb-")),
@@ -123,7 +142,9 @@ export async function GET(request: Request) {
       if (error.message) loginUrl.searchParams.set("auth_message", error.message);
       if (authError.code) loginUrl.searchParams.set("auth_code", authError.code);
     }
-    return NextResponse.redirect(loginUrl);
+    const redirectResponse = NextResponse.redirect(loginUrl);
+    if (passwordResetFlowCookie) clearPasswordResetFlowCookie(redirectResponse, url.hostname);
+    return redirectResponse;
   }
 
   const user = data.user;
@@ -192,18 +213,14 @@ export async function GET(request: Request) {
   console.log("[auth/callback] issuing 302 redirect (PasswordOnboardingGate runs only on client after HTML loads; it does not run in this route)", {
     finalUrl,
     hasPasswordResetIntent,
-    passwordResetFlowCookiePresent: passwordResetFlowCookie === "1",
+    passwordResetFlowCookiePresent: passwordResetFlowCookie !== null,
+    passwordResetFlowCookieFresh,
     cookiesToAttach: cookiesToSet.length,
     cookieNames: cookiesToSet.map((c) => c.name),
   });
 
   const redirectResponse = NextResponse.redirect(finalUrl);
-  if (hasPasswordResetIntent) {
-    redirectResponse.cookies.set(PASSWORD_RESET_FLOW_COOKIE, "", { path: "/", maxAge: 0 });
-    if (url.hostname.endsWith("goshed.app")) {
-      redirectResponse.cookies.set(PASSWORD_RESET_FLOW_COOKIE, "", { path: "/", domain: ".goshed.app", maxAge: 0 });
-    }
-  }
+  if (passwordResetFlowCookie) clearPasswordResetFlowCookie(redirectResponse, url.hostname);
   cookiesToSet.forEach(({ name, value, options }) => {
     redirectResponse.cookies.set(name, value, options as Parameters<NextResponse["cookies"]["set"]>[2]);
   });
