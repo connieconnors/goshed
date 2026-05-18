@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { createSupabaseBrowserClient } from "@/lib/supabase";
+import { createSupabaseBrowserClient, createSupabasePasswordResetClient } from "@/lib/supabase";
 import { useAuthSession } from "@/lib/auth-session-context";
 import { migrateGuestShedItemsToAccount } from "@/lib/guestShedStorage";
 import { syncGuestProPurchaseToAccount } from "@/lib/guestProStorage";
@@ -115,7 +115,7 @@ function LoginForm() {
     setResetSuccess(false);
     setResetSending(true);
     try {
-      const supabase = createSupabaseBrowserClient();
+      const supabase = createSupabasePasswordResetClient();
       const resetRedirectUrl = new URL(PASSWORD_RESET_REDIRECT_PATH, window.location.origin).toString();
       const { error } = await supabase.auth.resetPasswordForEmail(emailNorm, {
         redirectTo: resetRedirectUrl,

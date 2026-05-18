@@ -24,6 +24,10 @@ function recoveryErrorMessage(error: unknown): string {
   return "Could not establish a password recovery session.";
 }
 
+function firstParam(name: string, searchParams: URLSearchParams, hashParams: URLSearchParams): string | null {
+  return searchParams.get(name) ?? hashParams.get(name);
+}
+
 export default function RecoveryPage() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -36,24 +40,28 @@ export default function RecoveryPage() {
       try {
         const supabase = createSupabaseBrowserClient();
         const url = new URL(window.location.href);
-        const code = url.searchParams.get("code");
+        const searchParams = url.searchParams;
         const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-        const accessToken = hashParams.get("access_token");
-        const refreshToken = hashParams.get("refresh_token");
+        const accessToken = firstParam("access_token", searchParams, hashParams);
+        const refreshToken = firstParam("refresh_token", searchParams, hashParams);
+        const tokenHash = firstParam("token_hash", searchParams, hashParams);
 
-        if (code) {
-          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-          if (exchangeError) throw exchangeError;
-        } else if (accessToken && refreshToken) {
+        if (accessToken && refreshToken) {
           const { error: sessionError } = await supabase.auth.setSession({
             access_token: accessToken,
             refresh_token: refreshToken,
           });
           if (sessionError) throw sessionError;
+        } else if (tokenHash) {
+          const { error: verifyError } = await supabase.auth.verifyOtp({
+            token_hash: tokenHash,
+            type: "recovery",
+          });
+          if (verifyError) throw verifyError;
         } else {
-          const { data, error: sessionError } = await supabase.auth.getSession();
-          if (sessionError) throw sessionError;
-          if (!data.session) throw new Error("No recovery session was found. Please request a new password reset link.");
+          throw new Error(
+            "This reset link does not contain recovery credentials. Please request a new password reset link."
+          );
         }
 
         const { data: userData, error: userError } = await supabase.auth.getUser();

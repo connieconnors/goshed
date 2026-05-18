@@ -1,4 +1,5 @@
 import { createBrowserClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -19,4 +20,21 @@ export function createSupabaseBrowserClient() {
   }
   browserClient = createBrowserClient(supabaseUrl, supabaseAnonKey);
   return browserClient;
+}
+
+export function createSupabasePasswordResetClient() {
+  if (!supabaseUrl.trim() || !supabaseAnonKey.trim()) {
+    const msg =
+      "[goshed] Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY — add them to .env.local and restart dev.";
+    if (typeof window !== "undefined") console.error(msg);
+    throw new Error(msg);
+  }
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      flowType: "implicit",
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
 }
