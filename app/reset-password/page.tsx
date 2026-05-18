@@ -2,20 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
 import { useAuthSession } from "@/lib/auth-session-context";
 import { addEmailWithPassword } from "@/lib/authPasswordHint";
-
-const PASSWORD_RESET_FLOW_COOKIE = "goshed_password_reset_flow";
-
-function clearPasswordResetFlowCookie() {
-  if (typeof document === "undefined") return;
-  document.cookie = `${PASSWORD_RESET_FLOW_COOKIE}=; Max-Age=0; Path=/; SameSite=Lax`;
-  if (window.location.hostname.endsWith("goshed.app")) {
-    document.cookie = `${PASSWORD_RESET_FLOW_COOKIE}=; Max-Age=0; Path=/; Domain=.goshed.app; SameSite=Lax; Secure`;
-  }
-}
 
 export default function ResetPasswordPage() {
   const router = useRouter();
@@ -24,10 +14,6 @@ export default function ResetPasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
-
-  useEffect(() => {
-    clearPasswordResetFlowCookie();
-  }, []);
 
   const handleSubmit = async () => {
     const password = newPassword.trim();
@@ -62,7 +48,6 @@ export default function ResetPasswordPage() {
       setNewPassword("");
       setConfirmPassword("");
       setMessage({ type: "success", text: "Password updated. Taking you back to sign in…" });
-      clearPasswordResetFlowCookie();
       await supabase.auth.signOut();
       setTimeout(() => {
         router.replace("/login");

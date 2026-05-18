@@ -9,8 +9,7 @@ import { migrateGuestShedItemsToAccount } from "@/lib/guestShedStorage";
 import { syncGuestProPurchaseToAccount } from "@/lib/guestProStorage";
 
 const LAST_LOGIN_EMAIL_KEY = "goshed_last_login_email";
-const PASSWORD_RESET_FLOW_COOKIE = "goshed_password_reset_flow";
-const PASSWORD_RESET_REDIRECT_PATH = "/auth/callback";
+const PASSWORD_RESET_REDIRECT_PATH = "/auth/recovery";
 const PASSWORD_RESET_NEUTRAL_MESSAGE =
   "If an account exists for that email, we’ll send a password reset link. Please check your inbox and spam folder.";
 
@@ -30,18 +29,6 @@ function LoginForm() {
   const [sessionWaitTimedOut, setSessionWaitTimedOut] = useState(false);
 
   const emailNorm = email.trim().toLowerCase();
-  const resetCallbackDebugMessage =
-    searchParams.get("error") === "auth" && searchParams.get("flow") === "password-reset"
-      ? [
-          "Password reset debug: Supabase could not create a recovery session from the reset link.",
-          searchParams.get("auth_message") ? `Reason: ${searchParams.get("auth_message")}` : null,
-          searchParams.get("callback_origin") ? `Callback origin: ${searchParams.get("callback_origin")}` : null,
-          searchParams.get("next") ? `Next: ${searchParams.get("next")}` : null,
-        ]
-          .filter(Boolean)
-          .join(" ")
-      : null;
-
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -130,22 +117,6 @@ function LoginForm() {
     try {
       const supabase = createSupabaseBrowserClient();
       const resetRedirectUrl = new URL(PASSWORD_RESET_REDIRECT_PATH, window.location.origin).toString();
-      try {
-        const resetFlowRes = await fetch("/api/auth/password-reset-flow", {
-          method: "POST",
-          credentials: "include",
-          cache: "no-store",
-        });
-        if (!resetFlowRes.ok) {
-          console.error("[login] password reset flow cookie API failed:", resetFlowRes.status);
-        }
-      } catch (resetFlowError) {
-        console.error("[login] password reset flow cookie API request failed:", resetFlowError);
-      }
-      const resetCookieDomain = window.location.hostname.endsWith("goshed.app") ? "; Domain=.goshed.app" : "";
-      document.cookie = `${PASSWORD_RESET_FLOW_COOKIE}=${Date.now()}; Max-Age=600; Path=/; SameSite=Lax${resetCookieDomain}${
-        window.location.protocol === "https:" ? "; Secure" : ""
-      }`;
       const { error } = await supabase.auth.resetPasswordForEmail(emailNorm, {
         redirectTo: resetRedirectUrl,
       });
@@ -241,12 +212,6 @@ function LoginForm() {
 
       {resetError ? (
         <p style={{ color: "#b42318", fontSize: 14, marginBottom: 12, lineHeight: 1.45 }}>{resetError}</p>
-      ) : null}
-
-      {resetCallbackDebugMessage ? (
-        <p style={{ color: "#b42318", fontSize: 14, marginBottom: 12, lineHeight: 1.45 }}>
-          {resetCallbackDebugMessage}
-        </p>
       ) : null}
 
       {resetSuccess ? (

@@ -109,15 +109,6 @@ function deriveShippable(analysis: { item_label?: string; description?: string }
 
 const MAX_IMAGE_DIMENSION = 1600;
 const JPEG_QUALITY = 0.82;
-const PASSWORD_RESET_FLOW_COOKIE = "goshed_password_reset_flow";
-
-function clearPasswordResetFlowCookie() {
-  if (typeof document === "undefined") return;
-  document.cookie = `${PASSWORD_RESET_FLOW_COOKIE}=; Max-Age=0; Path=/; SameSite=Lax`;
-  if (window.location.hostname.endsWith("goshed.app")) {
-    document.cookie = `${PASSWORD_RESET_FLOW_COOKIE}=; Max-Age=0; Path=/; Domain=.goshed.app; SameSite=Lax; Secure`;
-  }
-}
 
 /** Resize image to reduce payload and avoid body/API limits; returns data URL. */
 function resizeAndToDataUrl(file: File): Promise<string> {
@@ -352,10 +343,6 @@ function HomeContent() {
     guestAnalysisCountRef.current = clearedStaleGuestState ? 0 : getStoredGuestAnalysisCount();
     guestGateDismissedUntilCountRef.current = clearedStaleGuestState ? 0 : getGuestGateDismissedUntilCount();
     if (clearedStaleGuestState) setShowGuestGateModal(false);
-  }, []);
-
-  useEffect(() => {
-    clearPasswordResetFlowCookie();
   }, []);
 
   useEffect(() => {
