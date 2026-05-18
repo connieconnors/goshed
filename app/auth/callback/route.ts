@@ -48,8 +48,16 @@ export async function GET(request: Request) {
   }
 
   const cookieStore = await cookies();
+  const incomingCookieNames = cookieStore.getAll().map((cookie) => cookie.name);
   const cookiesToSet: CookieToSet[] = [];
   const isProduction = process.env.NODE_ENV === "production";
+
+  console.log("[auth/callback] incoming cookies before exchange", {
+    nextParam,
+    origin,
+    cookieNames: incomingCookieNames,
+    hasSupabaseCookie: incomingCookieNames.some((name) => name.includes("supabase") || name.startsWith("sb-")),
+  });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -83,8 +91,27 @@ export async function GET(request: Request) {
 
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) {
-    console.error("[auth/callback] exchangeCodeForSession failed:", error.message, error);
-    return NextResponse.redirect(`${origin}/login?error=auth`);
+    const authError = error as typeof error & { code?: string; status?: number };
+    console.error("[auth/callback] exchangeCodeForSession failed:", {
+      message: error.message,
+      code: authError.code ?? null,
+      status: authError.status ?? null,
+      nextParam,
+      origin,
+      cookieNames: incomingCookieNames,
+      hasSupabaseCookie: incomingCookieNames.some((name) => name.includes("supabase") || name.startsWith("sb-")),
+      error,
+    });
+    const loginUrl = new URL("/login", origin);
+    loginUrl.searchParams.set("error", "auth");
+    if (nextParam === "/reset-password") {
+      loginUrl.searchParams.set("flow", "password-reset");
+      loginUrl.searchParams.set("next", nextParam);
+      loginUrl.searchParams.set("callback_origin", origin);
+      if (error.message) loginUrl.searchParams.set("auth_message", error.message);
+      if (authError.code) loginUrl.searchParams.set("auth_code", authError.code);
+    }
+    return NextResponse.redirect(loginUrl);
   }
 
   const user = data.user;

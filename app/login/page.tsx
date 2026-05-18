@@ -9,7 +9,7 @@ import { migrateGuestShedItemsToAccount } from "@/lib/guestShedStorage";
 import { syncGuestProPurchaseToAccount } from "@/lib/guestProStorage";
 
 const LAST_LOGIN_EMAIL_KEY = "goshed_last_login_email";
-const PASSWORD_RESET_REDIRECT_URL = "https://www.goshed.app/auth/callback?next=/reset-password";
+const PASSWORD_RESET_REDIRECT_PATH = "/auth/callback?next=/reset-password";
 const PASSWORD_RESET_NEUTRAL_MESSAGE =
   "If an account exists for that email, we’ll send a password reset link. Please check your inbox and spam folder.";
 
@@ -29,6 +29,17 @@ function LoginForm() {
   const [sessionWaitTimedOut, setSessionWaitTimedOut] = useState(false);
 
   const emailNorm = email.trim().toLowerCase();
+  const resetCallbackDebugMessage =
+    searchParams.get("error") === "auth" && searchParams.get("flow") === "password-reset"
+      ? [
+          "Password reset debug: Supabase could not create a recovery session from the reset link.",
+          searchParams.get("auth_message") ? `Reason: ${searchParams.get("auth_message")}` : null,
+          searchParams.get("callback_origin") ? `Callback origin: ${searchParams.get("callback_origin")}` : null,
+          searchParams.get("next") ? `Next: ${searchParams.get("next")}` : null,
+        ]
+          .filter(Boolean)
+          .join(" ")
+      : null;
 
   useEffect(() => {
     setMounted(true);
@@ -117,8 +128,9 @@ function LoginForm() {
     setResetSending(true);
     try {
       const supabase = createSupabaseBrowserClient();
+      const resetRedirectUrl = new URL(PASSWORD_RESET_REDIRECT_PATH, window.location.origin).toString();
       const { error } = await supabase.auth.resetPasswordForEmail(emailNorm, {
-        redirectTo: PASSWORD_RESET_REDIRECT_URL,
+        redirectTo: resetRedirectUrl,
       });
       if (error) {
         console.error("[login] resetPasswordForEmail failed:", error.message, error);
@@ -212,6 +224,12 @@ function LoginForm() {
 
       {resetError ? (
         <p style={{ color: "#b42318", fontSize: 14, marginBottom: 12, lineHeight: 1.45 }}>{resetError}</p>
+      ) : null}
+
+      {resetCallbackDebugMessage ? (
+        <p style={{ color: "#b42318", fontSize: 14, marginBottom: 12, lineHeight: 1.45 }}>
+          {resetCallbackDebugMessage}
+        </p>
       ) : null}
 
       {resetSuccess ? (
