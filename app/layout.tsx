@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Cormorant_Garamond, Source_Serif_4 } from "next/font/google";
 import Script from "next/script";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import "./home-viewport-overrides.css";
 import { ClearGuestGateDismissedOnAuth } from "@/app/components/ClearGuestGateDismissedOnAuth";
@@ -92,6 +93,7 @@ export default function RootLayout({
           </div>
           <SiteFooter />
         </AuthSessionProvider>
+        <Analytics />
       </body>
     </html>
   );
